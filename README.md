@@ -2,13 +2,39 @@
 
 A small daily notes app for the things you need to work on. You write markdown and it renders as you type.
 
+![The backlog page, with GitHub issue and PR chips, a Slack link and nested tasks](docs/screenshots/backlog.png)
+
 - Each day gets its own page, plus one Backlog page for later
 - `[ ] ` or `- [ ] ` starts a task list
 - Paste a GitHub PR or issue link and it becomes a chip with the title and a live status color (open, draft, merged, closed). Titles come from your `gh` login, so private repos work too
 - Paste a Slack message link and it shows the four-color Slack underline. Click any link to open it
 - Linear issue links show their title and status (triage, backlog, todo, in progress, done, canceled) once you add an API key in Settings (`⌘,`). The key is stored in your Keychain
-- `⌘K` captures a task from anywhere in the app. `tab` switches between Today and Backlog
+- `⌘K` captures a task from anywhere in the app. `⇧↵` adds a sub-task under it, and `tab` switches between Today and Backlog
 - When today is empty, it offers to bring over the most recent day's unfinished tasks
+
+## Capture
+
+`⌘K` opens a small box over whatever you're looking at. Paste a link and it shows how the chip will look before you add it.
+
+<p>
+  <img src="docs/screenshots/capture.png" width="49%" alt="The empty capture box">
+  <img src="docs/screenshots/capture-subtasks.png" width="49%" alt="Capturing a PR review with two sub-tasks">
+</p>
+
+## A new day
+
+Each morning starts with an empty page. If the last day still has open tasks, one click brings them over.
+
+<p>
+  <img src="docs/screenshots/today-empty.png" width="49%" alt="An empty Today page">
+  <img src="docs/screenshots/carry-over.png" width="49%" alt="Today offering to bring over 5 unfinished tasks from Friday">
+</p>
+
+## Settings
+
+Linear, GitHub, the `daybook` command and the notes folder, in one place.
+
+![Settings with Linear, GitHub, Agents and Notes](docs/screenshots/settings.png)
 
 ## Run
 
@@ -44,6 +70,7 @@ The app watches `~/Daybook`. When the CLI, an agent or another editor changes a 
 | | |
 |---|---|
 | `⌘K` | capture |
+| `⇧↵` | add a sub-task while capturing |
 | `⌥↑` / `⌥↓` | previous / next day |
 | `⌘/` | toggle markdown source |
 | `⌘\` | toggle sidebar |
