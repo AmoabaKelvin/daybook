@@ -75,3 +75,7 @@ The app watches `~/Daybook`. When the CLI, an agent or another editor changes a 
 | `⌘/` | toggle markdown source |
 | `⌘\` | toggle sidebar |
 | `⌘,` | settings |
+
+## License
+
+MIT
