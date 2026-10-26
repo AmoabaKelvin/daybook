@@ -122,7 +122,7 @@ fn gh_binary() -> &'static str {
     ["/opt/homebrew/bin/gh", "/usr/local/bin/gh"].into_iter().find(|p| Path::new(p).exists()).unwrap_or("gh")
 }
 
-fn gh(args: &[&str]) -> Option<Vec<u8>> {
+pub(crate) fn gh(args: &[&str]) -> Option<Vec<u8>> {
     let output = Command::new(gh_binary()).args(args).output().ok()?;
     output.status.success().then_some(output.stdout)
 }
@@ -149,7 +149,7 @@ pub fn github_login() -> Option<String> {
     Some(login.trim().to_string()).filter(|l| !l.is_empty())
 }
 
-fn linear_query(key: &str, query: &str, variables: serde_json::Value) -> Result<serde_json::Value, String> {
+pub(crate) fn linear_query(key: &str, query: &str, variables: serde_json::Value) -> Result<serde_json::Value, String> {
     let mut response = ureq::post(LINEAR_API)
         .header("Authorization", key)
         .send_json(serde_json::json!({ "query": query, "variables": variables }))

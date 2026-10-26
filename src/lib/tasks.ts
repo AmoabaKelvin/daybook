@@ -16,9 +16,14 @@ export async function toTaskLine(text: string) {
   const trimmed = text.trim()
   if (isUrl(trimmed)) {
     const info = isEnrichable(trimmed) ? await Promise.race([linkInfo(trimmed), wait(2500)]) : null
-    return `- [ ] [${escape(info?.title ?? labelFor(trimmed))}](${trimmed})`
+    return linkTask(info?.title ?? labelFor(trimmed), trimmed)
   }
   return `- [ ] ${trimmed.replace(URLS, (url) => `[${escape(labelFor(url))}](${url})`)}`
+}
+
+/** A markdown task that is just a link, under the given title. */
+export function linkTask(title: string, url: string) {
+  return `- [ ] [${escape(title)}](${url})`
 }
 
 /** A captured task with its sub-tasks nested under it, as one markdown block. */
@@ -64,19 +69,34 @@ export function appendToMarkdown(markdown: string, tasks: string) {
   const body = markdown.trimEnd()
   if (!body) return `${tasks}\n`
   const lastLine = body.split('\n').at(-1) ?? ''
-  return `${body}${/^\s*[-*+] \[[ xX]\] /.test(lastLine) ? '\n' : '\n\n'}${tasks}\n`
+  return `${body}${/^\s*[-*+] \[[ xX>]\] /.test(lastLine) ? '\n' : '\n\n'}${tasks}\n`
+}
+
+/** For each line, whether it belongs to an unfinished top-level task: the task, or anything nested under it that wasn't moved. */
+function carried(lines: string[]) {
+  let keeping = false
+  let movedIndent = Infinity
+  return lines.map((line) => {
+    if (/^[-*+] \[ \] /.test(line)) keeping = true
+    else if (!/^\s+\S/.test(line)) keeping = false
+    const indent = line.search(/\S/)
+    if (indent <= movedIndent) movedIndent = /^\s*[-*+] \[>\] /.test(line) ? indent : Infinity
+    return keeping && movedIndent === Infinity
+  })
 }
 
 /** The unfinished top-level tasks in a note, with anything nested under them. */
 export function openTasks(markdown: string) {
-  const kept: string[] = []
-  let keeping = false
-  for (const line of markdown.split('\n')) {
-    if (/^[-*+] \[ \] /.test(line)) keeping = true
-    else if (!/^\s+\S/.test(line)) keeping = false
-    if (keeping) kept.push(line)
-  }
-  return kept.join('\n')
+  const lines = markdown.split('\n')
+  const keep = carried(lines)
+  return lines.filter((_, i) => keep[i]).join('\n')
+}
+
+/** Marks the open tasks `openTasks` brings over as moved ("- [>] "). Done sub-tasks stay done. */
+export function markMoved(markdown: string) {
+  const lines = markdown.split('\n')
+  const keep = carried(lines)
+  return lines.map((line, i) => (keep[i] ? line.replace(/^(\s*[-*+] )\[ \] /, '$1[>] ') : line)).join('\n')
 }
 
 /**

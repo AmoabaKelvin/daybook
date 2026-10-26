@@ -92,18 +92,25 @@ pub fn write(dir: &Path, id: &str, content: &str) -> Result<String, String> {
 
 fn is_task(line: &str) -> bool {
     let trimmed = line.trim_start();
-    ["- [ ] ", "- [x] ", "- [X] ", "* [ ] ", "* [x] ", "+ [ ] ", "+ [x] "].iter().any(|p| trimmed.starts_with(p))
+    ["- [ ] ", "- [x] ", "- [X] ", "- [>] ", "* [ ] ", "* [x] ", "* [>] ", "+ [ ] ", "+ [x] ", "+ [>] "]
+        .iter()
+        .any(|p| trimmed.starts_with(p))
 }
 
 /// Appends a task line, joining the list the note ends with (same rule as the app's appendToMarkdown).
 pub fn append_task(markdown: &str, text: &str) -> String {
+    append_tasks(markdown, &format!("- [ ] {}", text.trim()))
+}
+
+/// Appends task lines that are already markdown, like a task and its sub-tasks.
+pub fn append_tasks(markdown: &str, tasks: &str) -> String {
     let body = markdown.trim_end();
-    let task = format!("- [ ] {}", text.trim());
+    let tasks = tasks.trim_end();
     if body.is_empty() {
-        return format!("{task}\n");
+        return format!("{tasks}\n");
     }
     let joins = body.lines().last().is_some_and(is_task);
-    format!("{body}{}{task}\n", if joins { "\n" } else { "\n\n" })
+    format!("{body}{}{tasks}\n", if joins { "\n" } else { "\n\n" })
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -113,6 +120,8 @@ pub struct Task {
     /// 0-based line index in the note.
     pub line: usize,
     pub done: bool,
+    /// "- [>]": moved to another day, so neither open nor done.
+    pub moved: bool,
     pub depth: usize,
     pub text: String,
 }
@@ -129,7 +138,8 @@ pub fn tasks(markdown: &str) -> Vec<Task> {
         found.push(Task {
             number: found.len() + 1,
             line,
-            done: !rest[2..].starts_with("[ ]"),
+            done: matches!(&rest[3..4], "x" | "X"),
+            moved: &rest[3..4] == ">",
             depth: indent / 2,
             text: rest[6..].to_string(),
         });
@@ -137,7 +147,7 @@ pub fn tasks(markdown: &str) -> Vec<Task> {
     found
 }
 
-/// Sets a task line's checkbox. `line` is a 0-based line index from `tasks`.
+/// Sets a task line's checkbox, which also brings a moved task back. `line` is a 0-based line index from `tasks`.
 pub fn set_done(markdown: &str, line: usize, done: bool) -> String {
     let mut lines: Vec<String> = markdown.lines().map(String::from).collect();
     if let Some(raw) = lines.get_mut(line) {
@@ -152,4 +162,25 @@ pub fn set_done(markdown: &str, line: usize, done: bool) -> String {
         out.push('\n');
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reads_moved_tasks() {
+        let all = tasks("- [ ] open\n- [x] done\n- [>] moved\n  - [X] sub\nnot a task\n");
+        let states: Vec<(bool, bool, usize)> = all.iter().map(|t| (t.done, t.moved, t.depth)).collect();
+        assert_eq!(states, [(false, false, 0), (true, false, 0), (false, true, 0), (true, false, 1)]);
+        assert_eq!(all[2].text, "moved");
+    }
+
+    #[test]
+    fn ticks_and_reopens_moved_tasks() {
+        let markdown = "- [>] a\n  - [>] b\n";
+        assert_eq!(set_done(markdown, 0, true), "- [x] a\n  - [>] b\n");
+        assert_eq!(set_done(markdown, 1, false), "- [>] a\n  - [ ] b\n");
+        assert!(append_task(markdown, "c").ends_with("- [>] b\n- [ ] c\n"));
+    }
 }

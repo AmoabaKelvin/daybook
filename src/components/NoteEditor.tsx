@@ -1,6 +1,4 @@
 import type { Editor } from '@tiptap/core'
-import TaskItem from '@tiptap/extension-task-item'
-import TaskList from '@tiptap/extension-task-list'
 import { Placeholder } from '@tiptap/extensions'
 import { Markdown } from '@tiptap/markdown'
 import { EditorContent, useEditor } from '@tiptap/react'
@@ -8,6 +6,7 @@ import StarterKit from '@tiptap/starter-kit'
 import { memo, useEffect, useRef } from 'react'
 import { tidyMarkdown } from '../lib/tasks'
 import { BulletToTask, handleClick, handlePaste, LinkState, Settle, SmartLink } from '../lib/extensions'
+import { Task, Tasks } from '../lib/taskstate'
 
 type Props = {
   initial: string
@@ -23,8 +22,8 @@ export const NoteEditor = memo(function NoteEditor({ initial, placeholder, onCha
     extensions: [
       StarterKit.configure({ link: false, heading: { levels: [1, 2, 3] } }),
       SmartLink,
-      TaskList,
-      TaskItem.configure({ nested: true }),
+      Tasks,
+      Task,
       Placeholder.configure({ placeholder, showOnlyCurrent: true }),
       Markdown,
       LinkState,

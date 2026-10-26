@@ -2,19 +2,23 @@ export type NoteSummary = {
   id: string
   open: number
   done: number
+  /** Tasks moved to another day ("- [>]"): neither open nor done. */
+  moved: number
   preview: string
   updated: number
 }
 
-const TASK = /^\s*[-*+] \[( |x|X)\] /
+const TASK = /^\s*[-*+] \[( |x|X|>)\] /
 
 export function summarize(id: string, markdown: string, updated = Date.now()): NoteSummary {
   let open = 0
   let done = 0
+  let moved = 0
   let preview = ''
   for (const line of markdown.split('\n')) {
     const task = line.match(TASK)
     if (task && task[1] === ' ') open++
+    else if (task && task[1] === '>') moved++
     else if (task) done++
     if (!preview && line.trim() && !line.startsWith('#')) {
       preview = line
@@ -26,5 +30,5 @@ export function summarize(id: string, markdown: string, updated = Date.now()): N
         .slice(0, 80)
     }
   }
-  return { id, open, done, preview, updated }
+  return { id, open, done, moved, preview, updated }
 }

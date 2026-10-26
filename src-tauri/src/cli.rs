@@ -11,6 +11,7 @@ daybook: the command line for Daybook, a daily notes and tasks app.
 Notes are markdown files in ~/Daybook (or $DAYBOOK_DIR; see `daybook path`):
 one YYYY-MM-DD.md per day plus backlog.md. Tasks are GFM task lines
 (\"- [ ] text\" open, \"- [x] text\" done), nested with 2-space indents.
+\"- [>] text\" is a task the app moved to a later day.
 The app may be open; it picks up file edits, but prefer `daybook add` and
 `daybook done` over editing the files yourself: they keep the format right.
 
@@ -22,15 +23,16 @@ Commands:
       Add an open task to the note (default today). Quotes are optional.
       e.g. daybook add Review https://github.com/acme/api/pull/42
   daybook tasks [when] [--open] [--json]
-      Numbered list of the note's tasks. --open hides done tasks but keeps the
-      numbers. --json prints [{\"number\", \"done\", \"depth\", \"text\"}].
+      Numbered list of the note's tasks. --open hides done and moved tasks but
+      keeps the numbers. --json prints
+      [{\"number\", \"done\", \"moved\", \"depth\", \"text\"}].
       e.g. daybook tasks --open
   daybook done <number | text...> [--in <when>]
       Tick one task: by its number from `daybook tasks`, or by a piece of its
       text (case-insensitive) that matches exactly one task.
       e.g. daybook done 2        daybook done auth fix --in yesterday
   daybook undo <number | text...> [--in <when>]
-      Untick one task, matched the same way.
+      Untick one task, matched the same way. Both work on moved tasks too.
   daybook days [--json]
       Every note, newest day first, backlog last, with open/done counts.
   daybook path
@@ -234,7 +236,13 @@ fn add(dir: &Path, rest: &[String]) -> Result<String, Fail> {
 }
 
 fn task_line(task: &Task) -> String {
-    let mark = if task.done { "x" } else { " " };
+    let mark = if task.done {
+        "x"
+    } else if task.moved {
+        ">"
+    } else {
+        " "
+    };
     format!("{}{:>3}. [{mark}] {}", "  ".repeat(task.depth), task.number, task.text)
 }
 
@@ -242,6 +250,7 @@ fn task_line(task: &Task) -> String {
 struct TaskOut<'a> {
     number: usize,
     done: bool,
+    moved: bool,
     depth: usize,
     text: &'a str,
 }
@@ -251,16 +260,24 @@ fn list_tasks(dir: &Path, rest: &[String]) -> Result<String, Fail> {
     let note = one_when(&parsed.words)?;
     let all = notes::tasks(&read(dir, &note.id)?);
     let open = parsed.has("--open");
-    let shown: Vec<&Task> = all.iter().filter(|t| !(open && t.done)).collect();
+    let shown: Vec<&Task> = all.iter().filter(|t| !(open && (t.done || t.moved))).collect();
     if parsed.has("--json") {
         let out: Vec<TaskOut> =
-            shown.iter().map(|t| TaskOut { number: t.number, done: t.done, depth: t.depth, text: &t.text }).collect();
+            shown
+            .iter()
+            .map(|t| TaskOut { number: t.number, done: t.done, moved: t.moved, depth: t.depth, text: &t.text })
+            .collect();
         return Ok(serde_json::to_string_pretty(&out).unwrap_or_default() + "\n");
     }
     if shown.is_empty() {
         return Ok(if open { "No open tasks.\n" } else { "No tasks.\n" }.to_string());
     }
     Ok(shown.iter().map(|t| task_line(t) + "\n").collect())
+}
+
+/// Whether ticking (`done`) or unticking a task changes it. A moved task changes either way.
+fn changes(task: &Task, done: bool) -> bool {
+    task.done != done || task.moved
 }
 
 /// The one task `query` names: a task number, or a text match preferring tasks not yet in the `done` state.
@@ -272,7 +289,7 @@ fn find<'a>(tasks: &'a [Task], query: &str, done: bool) -> Result<&'a Task, Vec<
     }
     let needle = query.to_lowercase();
     let hits: Vec<&Task> = tasks.iter().filter(|t| t.text.to_lowercase().contains(&needle)).collect();
-    let preferred: Vec<&Task> = hits.iter().copied().filter(|t| t.done != done).collect();
+    let preferred: Vec<&Task> = hits.iter().copied().filter(|t| changes(t, done)).collect();
     let pool = if preferred.is_empty() { hits } else { preferred };
     match pool.as_slice() {
         [one] => Ok(one),
@@ -309,7 +326,7 @@ fn tick(dir: &Path, rest: &[String], done: bool) -> Result<String, Fail> {
             )
         })
     })?;
-    if task.done != done {
+    if changes(task, done) {
         write(dir, &note.id, &notes::set_done(&markdown, task.line, done))?;
     }
     Ok(format!("{}: {}\n", if done { "Done" } else { "Reopened" }, task.text))
@@ -337,7 +354,8 @@ fn days(dir: &Path, rest: &[String]) -> Result<String, Fail> {
         .map(|n| {
             let tasks = notes::tasks(&n.content);
             let done = tasks.iter().filter(|t| t.done).count();
-            DayOut { id: n.id.clone(), label: label(&n.id), open: tasks.len() - done, done }
+            let open = tasks.iter().filter(|t| !t.done && !t.moved).count();
+            DayOut { id: n.id.clone(), label: label(&n.id), open, done }
         })
         .collect();
     if parsed.has("--json") {
@@ -442,7 +460,7 @@ mod tests {
         assert_eq!(ok(&tmp.0, "tasks"), "  1. [x] Done thing\n  2. [ ] Parent\n    3. [ ] Child\n");
         assert_eq!(ok(&tmp.0, "tasks --open"), "  2. [ ] Parent\n    3. [ ] Child\n");
         let json: serde_json::Value = serde_json::from_str(&ok(&tmp.0, "tasks --json --open")).unwrap();
-        assert_eq!(json[1], serde_json::json!({"number": 3, "done": false, "depth": 1, "text": "Child"}));
+        assert_eq!(json[1], serde_json::json!({"number": 3, "done": false, "moved": false, "depth": 1, "text": "Child"}));
         assert_eq!(ok(&tmp.0, "tasks yesterday"), "No tasks.\n");
         assert_eq!(ok(&tmp.0, "tasks yesterday --json"), "[]\n");
         assert_eq!(code(&tmp.0, "tasks --bogus"), 2);
@@ -462,6 +480,22 @@ mod tests {
         assert_eq!(code(&tmp.0, "done nothing like this"), 1);
         assert_eq!(code(&tmp.0, "done"), 2);
         assert_eq!(notes::read(&tmp.0, &id).unwrap(), "- [ ] Ship the auth fix\n- [x] Review auth PR\n- [x] Write docs\n");
+    }
+
+    #[test]
+    fn lists_and_ticks_moved_tasks() {
+        let tmp = TempDir::new("moved");
+        let id = notes::day_id(0);
+        std::fs::create_dir_all(&tmp.0).unwrap();
+        notes::write(&tmp.0, &id, "- [>] Moved one\n- [ ] Open\n- [>] Moved two\n").unwrap();
+        assert_eq!(ok(&tmp.0, "tasks"), "  1. [>] Moved one\n  2. [ ] Open\n  3. [>] Moved two\n");
+        assert_eq!(ok(&tmp.0, "tasks --open"), "  2. [ ] Open\n");
+        let json: serde_json::Value = serde_json::from_str(&ok(&tmp.0, "tasks --json")).unwrap();
+        assert_eq!(json[0]["moved"], true);
+        assert_eq!(ok(&tmp.0, "days"), format!("{id}  Today      1 open · 0 done\n"));
+        assert_eq!(ok(&tmp.0, "done 1"), "Done: Moved one\n");
+        assert_eq!(ok(&tmp.0, "undo two"), "Reopened: Moved two\n");
+        assert_eq!(notes::read(&tmp.0, &id).unwrap(), "- [x] Moved one\n- [ ] Open\n- [ ] Moved two\n");
     }
 
     #[test]

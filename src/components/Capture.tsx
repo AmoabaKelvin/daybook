@@ -5,22 +5,32 @@ import { classify } from '../lib/links'
 
 type Target = 'today' | typeof BACKLOG
 
-type Props = {
-  open: boolean
+type CardProps = {
   onClose: () => void
   onSubmit: (text: string, subtasks: string[], target: Target) => Promise<void>
 }
 
-export function Capture({ open, onClose, onSubmit }: Props) {
-  return <AnimatePresence>{open && <CaptureDialog onClose={onClose} onSubmit={onSubmit} />}</AnimatePresence>
+export function Capture({ open, onClose, onSubmit }: CardProps & { open: boolean }) {
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div className="capture-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={onClose}>
+          <CaptureCard onClose={onClose} onSubmit={onSubmit} />
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
 }
 
 let nextRow = 0
 type Row = { key: number; text: string }
 const row = (text = ''): Row => ({ key: nextRow++, text })
 
-/** The entry is rows[0]; every row after it is a sub-task. */
-function CaptureDialog({ onClose, onSubmit }: Omit<Props, 'open'>) {
+/**
+ * The capture box, shown by the ⌘K dialog and by the quick capture panel.
+ * The entry is rows[0]; every row after it is a sub-task.
+ */
+export function CaptureCard({ onClose, onSubmit }: CardProps) {
   const [rows, setRows] = useState(() => [row()])
   const [focused, setFocused] = useState(0)
   const [target, setTarget] = useState<Target>('today')
@@ -65,66 +75,64 @@ function CaptureDialog({ onClose, onSubmit }: Omit<Props, 'open'>) {
   const previewText = rows[focused]?.text ?? ''
 
   return (
-    <motion.div className="capture-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={onClose}>
-      <motion.div
-        className="capture"
-        initial={{ opacity: 0, y: -12, scale: 0.97 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: -8, scale: 0.98, transition: { duration: 0.12 } }}
-        transition={{ type: 'spring', stiffness: 520, damping: 34 }}
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <div className="capture-rows">
-          <AnimatePresence initial={false}>
-            {rows.map((r, index) => (
-              <motion.div
-                key={r.key}
-                className={index === 0 ? 'capture-row' : 'capture-row sub'}
-                initial={index === 0 ? false : { opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                transition={{ type: 'spring', stiffness: 520, damping: 40 }}
-              >
-                <span className={busy && index === 0 ? 'capture-box busy' : 'capture-box'} />
-                <input
-                  ref={(el) => {
-                    if (el) inputs.current.set(r.key, el)
-                    else inputs.current.delete(r.key)
-                  }}
-                  value={r.text}
-                  onChange={(e) => edit(index, e.target.value)}
-                  onKeyDown={(e) => onKeyDown(e, index)}
-                  onFocus={() => setFocused(index)}
-                  placeholder={index === 0 ? 'Something to do, or paste a link…' : 'Sub-task'}
-                  spellCheck
-                />
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        </div>
+    <motion.div
+      className="capture"
+      initial={{ opacity: 0, y: -12, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -8, scale: 0.98, transition: { duration: 0.12 } }}
+      transition={{ type: 'spring', stiffness: 520, damping: 34 }}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      <div className="capture-rows">
         <AnimatePresence initial={false}>
-          {/https?:\/\//.test(previewText) && (
-            <motion.div className="capture-preview" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}>
-              <div className={focused === 0 ? 'prose capture-preview-inner' : 'prose capture-preview-inner sub'}>
-                <Preview text={previewText} />
-              </div>
+          {rows.map((r, index) => (
+            <motion.div
+              key={r.key}
+              className={index === 0 ? 'capture-row' : 'capture-row sub'}
+              initial={index === 0 ? false : { opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ type: 'spring', stiffness: 520, damping: 40 }}
+            >
+              <span className={busy && index === 0 ? 'capture-box busy' : 'capture-box'} />
+              <input
+                ref={(el) => {
+                  if (el) inputs.current.set(r.key, el)
+                  else inputs.current.delete(r.key)
+                }}
+                value={r.text}
+                onChange={(e) => edit(index, e.target.value)}
+                onKeyDown={(e) => onKeyDown(e, index)}
+                onFocus={() => setFocused(index)}
+                placeholder={index === 0 ? 'Something to do, or paste a link…' : 'Sub-task'}
+                spellCheck
+              />
             </motion.div>
-          )}
+          ))}
         </AnimatePresence>
-        <div className="capture-footer">
-          <div className="segmented" role="radiogroup">
-            {(['today', BACKLOG] as const).map((t) => (
-              <button key={t} role="radio" aria-checked={target === t} className={target === t ? 'on' : ''} onClick={() => setTarget(t)}>
-                {target === t && <motion.span layoutId="capture-target" className="segmented-pill" transition={{ type: 'spring', stiffness: 600, damping: 40 }} />}
-                <span>{t === 'today' ? 'Today' : 'Backlog'}</span>
-              </button>
-            ))}
-          </div>
-          <span className="capture-keys">
-            <kbd>⇧↵</kbd> sub-task <kbd>tab</kbd> switch <kbd>↵</kbd> add
-          </span>
+      </div>
+      <AnimatePresence initial={false}>
+        {/https?:\/\//.test(previewText) && (
+          <motion.div className="capture-preview" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}>
+            <div className={focused === 0 ? 'prose capture-preview-inner' : 'prose capture-preview-inner sub'}>
+              <Preview text={previewText} />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <div className="capture-footer">
+        <div className="segmented" role="radiogroup">
+          {(['today', BACKLOG] as const).map((t) => (
+            <button key={t} role="radio" aria-checked={target === t} className={target === t ? 'on' : ''} onClick={() => setTarget(t)}>
+              {target === t && <motion.span layoutId="capture-target" className="segmented-pill" transition={{ type: 'spring', stiffness: 600, damping: 40 }} />}
+              <span>{t === 'today' ? 'Today' : 'Backlog'}</span>
+            </button>
+          ))}
         </div>
-      </motion.div>
+        <span className="capture-keys">
+          <kbd>⇧↵</kbd> sub-task <kbd>tab</kbd> switch <kbd>↵</kbd> add
+        </span>
+      </div>
     </motion.div>
   )
 }

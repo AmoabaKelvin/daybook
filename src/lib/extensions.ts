@@ -64,9 +64,56 @@ function fetchStates(view: EditorView, fresh: boolean) {
     if (!fresh) linkStates.set(href, null)
     linkInfo(href, fresh).then((info) => {
       linkStates.set(href, info)
+      if (info && tickFinished(view, href, info)) return
       refresh(view)
     })
   }
+}
+
+const TICKED = 'daybook.ticked'
+// Links we've ticked tasks off for, so a task you untick again stays unticked.
+const ticked = new Set<string>(readTicked())
+
+function readTicked(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(TICKED) ?? '[]')
+  } catch {
+    return []
+  }
+}
+
+/** A merged PR, a closed issue, or a finished Linear issue. */
+function isFinished(href: string, info: LinkInfo) {
+  const link = classify(href)
+  if (link.kind === 'linear') return info.state === 'completed'
+  return link.kind === 'github' && (info.state === 'merged' || (link.type === 'issue' && info.state === 'closed'))
+}
+
+/**
+ * Ticks off the open tasks that link to a PR or issue once it's merged or done, once per link.
+ * Returns whether it changed the note.
+ */
+function tickFinished(view: EditorView, href: string, info: LinkInfo) {
+  if (view.isDestroyed || ticked.has(href) || !isFinished(href, info)) return false
+  const { tr } = view.state
+  view.state.doc.descendants((node, pos) => {
+    if (node.type.name !== 'taskItem' || node.attrs.checked || node.attrs.moved) return
+    let links = false
+    node.firstChild?.descendants((child) => {
+      links ||= child.marks.some((m) => m.type.name === 'link' && m.attrs.href === href)
+    })
+    if (links) tr.setNodeAttribute(pos, 'checked', true)
+  })
+  if (!tr.docChanged) return false
+  ticked.add(href)
+  try {
+    localStorage.setItem(TICKED, JSON.stringify([...ticked]))
+  } catch {
+    // Without storage the same task may get ticked again next session, which is harmless.
+  }
+  view.dispatch(tr.setMeta(linkKey, true))
+  window.dispatchEvent(new CustomEvent('daybook:ticked', { detail: { title: info.title, state: info.state } }))
+  return true
 }
 
 /**
@@ -101,6 +148,7 @@ export const LinkState = Extension.create({
           setTimeout(() => {
             if (view.isDestroyed) return
             refresh(view)
+            fetchStates(view, false)
             titleBareRefs(view)
           })
           return {
@@ -141,6 +189,7 @@ function titleLink(view: EditorView, href: string, placeholder: string) {
     if (view.isDestroyed) return titled.delete(href)
     if (!info) return
     linkStates.set(href, info)
+    tickFinished(view, href, info)
     const matches = linkRanges(view.state.doc).filter((r) => r.href === href && r.text === placeholder)
     if (!matches.length) return refresh(view)
     const { tr, schema } = view.state

@@ -1,11 +1,15 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { openUrl } from '@tauri-apps/plugin-opener'
 
 /** True inside the Mac app, false when running in a browser via `pnpm dev`. */
 export const isNative = '__TAURI_INTERNALS__' in window
 
 export { invoke }
+
+/** True in the quick capture panel, which shows the capture box on its own. */
+export const isQuickPanel = isNative && getCurrentWindow().label === 'quick'
 
 export function openLink(href: string) {
   if (isNative) openUrl(href)
@@ -30,5 +34,14 @@ export function onNoteChanged(handle: (id: string, content: string) => void) {
   const stop = listen<{ id: string; content: string }>('daybook://changed', (event) => handle(event.payload.id, event.payload.content))
   return () => {
     stop.then((unlisten) => unlisten())
+  }
+}
+
+/** The quick capture panel was opened (by the shortcut or the menu bar), or lost focus. */
+export function onQuickPanel(handle: (open: boolean) => void) {
+  if (!isNative) return () => {}
+  const stops = [listen('daybook://quick-open', () => handle(true)), listen('daybook://quick-blur', () => handle(false))]
+  return () => {
+    stops.forEach((stop) => stop.then((unlisten) => unlisten()))
   }
 }

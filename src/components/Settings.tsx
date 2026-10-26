@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react'
-import { useEffect, useState } from 'react'
-import { clearLinearKey, getSettings, installCli, revealNotes, setLinearKey, type Settings as SettingsData } from '../lib/api'
+import { useCallback, useEffect, useState } from 'react'
+import { clearLinearKey, getSettings, installCli, revealNotes, setCaptureShortcut, setLinearKey, type Settings as SettingsData } from '../lib/api'
 import { isNative, openLink } from '../lib/native'
 
 type Props = {
@@ -62,6 +62,7 @@ function SettingsSheet({ onClose, onLinksChanged }: Omit<Props, 'open'>) {
                 </Status>
               )}
             </Row>
+            <QuickCapture settings={settings} onChange={setSettings} />
             <Agents settings={settings} onChange={setSettings} />
             <Row icon="folder" title="Notes" loading={!settings}>
               <div className="row-inline">
@@ -152,6 +153,108 @@ function Linear({ settings, onChange }: { settings: SettingsData | null; onChang
       </AnimatePresence>
     </Row>
   )
+}
+
+function QuickCapture({ settings, onChange }: { settings: SettingsData | null; onChange: (s: SettingsData) => void }) {
+  const [recording, setRecording] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const shortcut = settings?.captureShortcut.shortcut
+
+  const save = useCallback(
+    async (next: string | null) => {
+      if (!settings) return
+      setRecording(false)
+      try {
+        await setCaptureShortcut(next)
+        onChange({ ...settings, captureShortcut: { shortcut: next, error: null } })
+        setError(null)
+      } catch (e) {
+        setError(String(e))
+      }
+    },
+    [settings, onChange],
+  )
+
+  // While recording, the next key combination becomes the shortcut. Esc cancels.
+  useEffect(() => {
+    if (!recording) return
+    function onKey(event: KeyboardEvent) {
+      event.preventDefault()
+      event.stopPropagation()
+      if (event.key === 'Escape') setRecording(false)
+      else {
+        const accelerator = toAccelerator(event)
+        if (accelerator) save(accelerator)
+      }
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [recording, save])
+
+  const message = error ?? settings?.captureShortcut.error
+  return (
+    <Row icon="command" title="Quick capture" loading={!settings}>
+      <div className="row-inline">
+        <Status ok={!!shortcut && !message}>{shortcut ? 'Opens the capture box over any app' : 'Off'}</Status>
+        <span className="row-actions">
+          {shortcut && !recording && (
+            <button className="button quiet" onClick={() => save(null)}>
+              Turn off
+            </button>
+          )}
+          <button className={recording ? 'button shortcut recording' : 'button shortcut'} onClick={() => setRecording((r) => !r)}>
+            {recording ? 'Type a shortcut…' : shortcut ? shortcutKeys(shortcut).map((key) => <kbd key={key}>{key}</kbd>) : 'Set shortcut'}
+          </button>
+        </span>
+      </div>
+      <AnimatePresence>
+        {message && (
+          <motion.p className="row-error" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>
+            {message}
+          </motion.p>
+        )}
+      </AnimatePresence>
+      <p className="row-help">Add a task from Slack, the browser, anywhere, without switching apps. Esc closes it.</p>
+    </Row>
+  )
+}
+
+const MODIFIERS = ['Meta', 'Alt', 'Control', 'Shift']
+
+/** A keydown as a global shortcut accelerator like "Alt+Space", if it has a modifier (or is an F-key). */
+function toAccelerator(event: KeyboardEvent) {
+  if (MODIFIERS.includes(event.key)) return null
+  const key = event.code.replace(/^(Key|Digit)/, '')
+  const mods = [event.ctrlKey && 'Control', event.altKey && 'Alt', event.shiftKey && 'Shift', event.metaKey && 'Cmd'].filter(Boolean)
+  if (!mods.length && !/^F\d+$/.test(key)) return null
+  return [...mods, key].join('+')
+}
+
+const KEY_SYMBOLS: Record<string, string> = {
+  Control: '⌃',
+  Alt: '⌥',
+  Shift: '⇧',
+  Cmd: '⌘',
+  ArrowUp: '↑',
+  ArrowDown: '↓',
+  ArrowLeft: '←',
+  ArrowRight: '→',
+  Enter: '↵',
+  Period: '.',
+  Comma: ',',
+  Slash: '/',
+  Backslash: '\\',
+  Semicolon: ';',
+  Quote: "'",
+  BracketLeft: '[',
+  BracketRight: ']',
+  Minus: '-',
+  Equal: '=',
+  Backquote: '`',
+}
+
+function shortcutKeys(accelerator: string) {
+  return accelerator.split('+').map((part) => KEY_SYMBOLS[part] ?? part)
 }
 
 function Agents({ settings, onChange }: { settings: SettingsData | null; onChange: (s: SettingsData) => void }) {

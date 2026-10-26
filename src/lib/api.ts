@@ -11,6 +11,30 @@ export type LinkInfo = { title: string; state: string; status?: string | null }
 
 export type LinearAccount = { name: string; workspace: string }
 
+/** A PR waiting on your review, or an issue or PR assigned to you. `state` uses LinkInfo's words. */
+export type WorkItem = {
+  source: 'github' | 'linear'
+  kind: 'pull' | 'issue'
+  url: string
+  title: string
+  ref: string
+  state: string
+  status: string | null
+  group: 'review' | 'assigned'
+  updated: number
+}
+
+/** A source is null when it isn't connected (no `gh` login, no Linear key) or couldn't be loaded. */
+export type AssignedWork = {
+  github: WorkItem[] | null
+  linear: WorkItem[] | null
+  githubError: string | null
+  linearError: string | null
+}
+
+/** An accelerator like "Alt+Space", or null when quick capture is off. */
+export type CaptureShortcut = { shortcut: string | null; error: string | null }
+
 export type Settings = {
   notesDir: string
   githubLogin: string | null
@@ -18,6 +42,7 @@ export type Settings = {
   linearError: string | null
   cliPath: string
   cliInstalled: boolean
+  captureShortcut: CaptureShortcut
 }
 
 type NoteFile = { id: string; content: string; updated: number }
@@ -60,6 +85,11 @@ export function forgetLinks() {
   linkRequests.clear()
 }
 
+export function assigned(fresh = false): Promise<AssignedWork> {
+  if (isNative) return invoke<AssignedWork>('list_assigned', { fresh })
+  return fetch(`/api/assigned${fresh ? '?fresh' : ''}`).then((res) => res.json())
+}
+
 // Settings live in the Mac app; in the browser they're read-only defaults.
 
 export async function getSettings(): Promise<Settings | null> {
@@ -80,4 +110,22 @@ export function installCli() {
 
 export function revealNotes() {
   return invoke<void>('reveal_notes')
+}
+
+export function setCaptureShortcut(shortcut: string | null) {
+  return invoke<void>('set_capture_shortcut', { shortcut })
+}
+
+// The quick capture panel, which only exists in the Mac app.
+
+export function quickAdd(target: string, tasks: string) {
+  return invoke<void>('quick_add', { target, tasks })
+}
+
+export function hideQuick() {
+  return invoke<void>('hide_quick')
+}
+
+export function resizeQuick(height: number) {
+  return invoke<void>('resize_quick', { height })
 }

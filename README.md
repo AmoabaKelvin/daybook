@@ -7,14 +7,18 @@ A small daily notes app for the things you need to work on. You write markdown a
 - Each day gets its own page, plus one Backlog page for later
 - `[ ] ` or `- [ ] ` starts a task list
 - Paste a GitHub PR or issue link and it becomes a chip with the title and a live status color (open, draft, merged, closed). Titles come from your `gh` login, so private repos work too
+- When a linked PR merges, or a linked issue closes, its task ticks itself off. Untick it and it stays unticked
 - Paste a Slack message link and it shows the four-color Slack underline. Click any link to open it
 - Linear issue links show their title and status (triage, backlog, todo, in progress, done, canceled) once you add an API key in Settings (`⌘,`). The key is stored in your Keychain
 - `⌘K` captures a task from anywhere in the app. `⇧↵` adds a sub-task under it, and `tab` switches between Today and Backlog
+- `⌥Space` opens the same capture box over any app, so you can grab something from Slack without switching windows. Change or turn off the shortcut in Settings
+- The menu bar icon shows how many tasks are open today. Its menu lists them so you can tick them off, and has quick capture
 - When today is empty, it offers to bring over the most recent day's unfinished tasks
+- Tasks you bring over are marked moved (`- [>] `) on the day they came from, so that day reads as finished
 
 ## Capture
 
-`⌘K` opens a small box over whatever you're looking at. Paste a link and it shows how the chip will look before you add it.
+`⌘K` opens a small box over whatever you're looking at, and `⌥Space` opens it over any other app too. Paste a link and it shows how the chip will look before you add it.
 
 <p>
   <img src="docs/screenshots/capture.png" width="49%" alt="The empty capture box">
@@ -70,6 +74,8 @@ The app watches `~/Daybook`. When the CLI, an agent or another editor changes a 
 | | |
 |---|---|
 | `⌘K` | capture |
+| `⌘J` | assigned to you (GitHub and Linear) |
+| `⌥Space` | capture from any app |
 | `⇧↵` | add a sub-task while capturing |
 | `⌥↑` / `⌥↓` | previous / next day |
 | `⌘/` | toggle markdown source |

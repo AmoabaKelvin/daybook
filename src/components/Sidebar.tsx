@@ -1,15 +1,17 @@
 import { AnimatePresence, motion } from 'motion/react'
 import type { NoteSummary } from '../lib/api'
-import { BACKLOG, dayId, shortLabel } from '../lib/dates'
+import { ASSIGNED, dayId, shortLabel } from '../lib/dates'
 
 type Props = {
   ids: string[]
   notes: Map<string, NoteSummary>
   current: string
+  /** How much is assigned to you, once known. */
+  assignedCount: number | null
   onSelect: (id: string) => void
 }
 
-export function Sidebar({ ids, notes, current, onSelect }: Props) {
+export function Sidebar({ ids, notes, current, assignedCount, onSelect }: Props) {
   const today = dayId()
   return (
     <nav className="sidebar">
@@ -19,7 +21,7 @@ export function Sidebar({ ids, notes, current, onSelect }: Props) {
           {ids.map((id, index) => {
             const note = notes.get(id)
             const active = id === current
-            const allDone = note && note.open === 0 && note.done > 0
+            const allDone = note && note.open === 0 && note.done + note.moved > 0
             return (
               <motion.li
                 key={id}
@@ -27,9 +29,9 @@ export function Sidebar({ ids, notes, current, onSelect }: Props) {
                 initial={{ opacity: 0, x: -8 }}
                 animate={{ opacity: 1, x: 0, transition: { delay: Math.min(index, 12) * 0.025 } }}
                 exit={{ opacity: 0, x: -8 }}
-                className={id === BACKLOG ? 'pinned' : undefined}
+                className={id === ASSIGNED ? 'pinned' : undefined}
               >
-                <button className={active ? 'day active' : 'day'} onClick={() => onSelect(id)}>
+                <button className={active ? 'day active' : 'day'} onClick={() => onSelect(id)} title={id === ASSIGNED ? 'Assigned (⌘J)' : undefined}>
                   {active && (
                     <motion.span layoutId="day-highlight" className="day-highlight" transition={{ type: 'spring', stiffness: 500, damping: 38 }} />
                   )}
@@ -38,7 +40,7 @@ export function Sidebar({ ids, notes, current, onSelect }: Props) {
                     {shortLabel(id)}
                   </span>
                   <span className="day-count">
-                    {allDone ? <Check /> : note?.open ? note.open : ''}
+                    {id === ASSIGNED ? assignedCount || '' : allDone ? <Check /> : note?.open ? note.open : ''}
                   </span>
                 </button>
               </motion.li>

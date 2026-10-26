@@ -31,6 +31,7 @@ pub fn start(app: AppHandle, dir: &Path, written: Written) -> Result<Debouncer<R
                 continue;
             }
             let _ = app.emit("daybook://changed", Changed { id, content });
+            crate::tray::refresh(&app);
         }
     })
     .map_err(|e| e.to_string())?;

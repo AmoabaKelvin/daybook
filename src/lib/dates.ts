@@ -1,4 +1,6 @@
 export const BACKLOG = 'backlog'
+/** Not a note: the page of GitHub and Linear work assigned to you. */
+export const ASSIGNED = 'assigned'
 
 export function dayId(date = new Date()) {
   const y = date.getFullYear()
@@ -23,6 +25,7 @@ function daysAgo(id: string) {
 
 export function shortLabel(id: string) {
   if (id === BACKLOG) return 'Backlog'
+  if (id === ASSIGNED) return 'Assigned'
   const ago = daysAgo(id)
   if (ago === 0) return 'Today'
   if (ago === 1) return 'Yesterday'
@@ -37,6 +40,7 @@ export function shortLabel(id: string) {
 
 export function titleFor(id: string) {
   if (id === BACKLOG) return { title: 'Backlog', subtitle: 'Someday, not today' }
+  if (id === ASSIGNED) return { title: 'Assigned', subtitle: 'From GitHub and Linear' }
   const date = parseDay(id)
   const ago = daysAgo(id)
   const weekday = date.toLocaleDateString(undefined, { weekday: 'long' })

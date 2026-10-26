@@ -537,6 +537,15 @@ kbd {
   text-decoration-color: transparent;
 }
 
+/* Moved to another day: quiet, but not crossed out. */
+.prose li[data-moved] > div {
+  color: var(--muted);
+}
+
+.prose li[data-moved] > div li[data-checked='false']:not([data-moved]) > div {
+  color: var(--text);
+}
+
 .prose li[data-checked] input {
   appearance: none;
   margin: 0;
@@ -577,6 +586,29 @@ kbd {
 
 .prose li[data-checked] input:checked::before {
   transform: scale(1);
+}
+
+/* A moved task's arrow sits where its checkbox would; clicking it reopens the task. */
+.prose li[data-moved] > label input {
+  border-color: transparent;
+  background: transparent;
+}
+
+.prose li[data-moved] > label input::before {
+  width: 12px;
+  height: 12px;
+  background: var(--faint);
+  mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M2.5 8h10M9 4l4 4-4 4' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  transform: none;
+  transition: background-color 0.2s var(--ease);
+}
+
+.prose li[data-moved] > label input:hover {
+  border-color: var(--line-strong);
+}
+
+.prose li[data-moved] > label input:hover::before {
+  background: var(--muted);
 }
 
 @keyframes tick {
@@ -674,7 +706,8 @@ kbd {
   --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z'/></svg>");
 }
 
-.chip-github.gh-pull {
+.chip-github.gh-pull,
+.state-icon.gh-pull {
   --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm8.25.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Z'/></svg>");
 }
 
@@ -682,7 +715,8 @@ kbd {
   --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M5.45 5.154A4.25 4.25 0 0 0 9.25 7.5h1.378a2.251 2.251 0 1 1 0 1.5H9.25A5.734 5.734 0 0 1 5 7.123v3.505a2.25 2.25 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.95-.218ZM4.25 13.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm8.5-4.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5ZM5 3.25a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Z'/></svg>");
 }
 
-.chip-github.gh-issue {
+.chip-github.gh-issue,
+.state-icon.gh-issue {
   --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M8 9.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z'/><path d='M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Z'/></svg>");
 }
 
@@ -694,11 +728,13 @@ kbd {
   --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M11.93 8.5a4.002 4.002 0 0 1-7.86 0H.75a.75.75 0 0 1 0-1.5h3.32a4.002 4.002 0 0 1 7.86 0h3.32a.75.75 0 0 1 0 1.5Zm-1.43-.75a2.5 2.5 0 1 0-5 0 2.5 2.5 0 0 0 5 0Z'/></svg>");
 }
 
-.chip-github:has([data-state='open'])::before {
+.chip-github:has([data-state='open'])::before,
+.state-icon.github[data-state='open'] {
   background: var(--gh-open);
 }
 
-.chip-github:has([data-state='draft'])::before {
+.chip-github:has([data-state='draft'])::before,
+.state-icon.github[data-state='draft'] {
   background: var(--gh-draft);
 }
 
@@ -714,48 +750,59 @@ kbd {
   background: var(--gh-merged);
 }
 
-.chip-linear {
+.chip-linear,
+.state-icon.linear {
   --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='6.25' fill='none' stroke='black' stroke-width='1.5'/><path d='M8 1.75a6.25 6.25 0 0 1 0 12.5Z'/></svg>");
 }
 
 /* Linear: the state icons and colours from Linear's own workflow. */
-.chip-linear:has([data-state='triage']) {
+.chip-linear:has([data-state='triage']),
+.state-icon.linear[data-state='triage'] {
   --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='6.25' fill='none' stroke='black' stroke-width='1.5'/><path d='M5 8h6M8.5 5.5 11 8l-2.5 2.5' fill='none' stroke='black' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/></svg>");
 }
 
-.chip-linear:has([data-state='backlog']) {
+.chip-linear:has([data-state='backlog']),
+.state-icon.linear[data-state='backlog'] {
   --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='6.25' fill='none' stroke='black' stroke-width='1.5' stroke-dasharray='2.2 2'/></svg>");
 }
 
-.chip-linear:has([data-state='unstarted']) {
+.chip-linear:has([data-state='unstarted']),
+.state-icon.linear[data-state='unstarted'] {
   --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='6.25' fill='none' stroke='black' stroke-width='1.5'/></svg>");
 }
 
-.chip-linear:has([data-state='started']) {
+.chip-linear:has([data-state='started']),
+.state-icon.linear[data-state='started'] {
   --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='6.25' fill='none' stroke='black' stroke-width='1.5'/><path d='M8 4a4 4 0 0 1 0 8Z'/></svg>");
 }
 
-.chip-linear:has([data-state='completed']) {
+.chip-linear:has([data-state='completed']),
+.state-icon.linear[data-state='completed'] {
   --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='7'/><path d='M5 8.2l2 2 4-4.2' fill='none' stroke='white' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>");
 }
 
-.chip-linear:has([data-state='canceled']) {
+.chip-linear:has([data-state='canceled']),
+.state-icon.linear[data-state='canceled'] {
   --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='7'/><path d='M5.6 5.6l4.8 4.8M10.4 5.6l-4.8 4.8' stroke='white' stroke-width='1.6' stroke-linecap='round'/></svg>");
 }
 
-.chip-linear:has([data-state='triage'])::before {
+.chip-linear:has([data-state='triage'])::before,
+.state-icon.linear[data-state='triage'] {
   background: var(--linear-triage);
 }
 
-.chip-linear:has([data-state='started'])::before {
+.chip-linear:has([data-state='started'])::before,
+.state-icon.linear[data-state='started'] {
   background: var(--linear-started);
 }
 
-.chip-linear:has([data-state='completed'])::before {
+.chip-linear:has([data-state='completed'])::before,
+.state-icon.linear[data-state='completed'] {
   background: var(--linear-completed);
 }
 
-.chip-linear:has([data-state='canceled'])::before {
+.chip-linear:has([data-state='canceled'])::before,
+.state-icon.linear[data-state='canceled'] {
   background: var(--faint);
 }
 
@@ -1024,6 +1071,10 @@ kbd {
   --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect x='1.5' y='2.5' width='13' height='11' rx='2.5' fill='none' stroke='black' stroke-width='1.4'/><path d='M4.5 6l2 2-2 2M8.5 10.5h3' fill='none' stroke='black' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/></svg>");
 }
 
+.icon-command {
+  --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M6 6V4.25A1.75 1.75 0 1 0 4.25 6H6Zm0 0h4m-4 0v4m4-4V4.25A1.75 1.75 0 1 1 11.75 6H10Zm0 0v4m0 0h1.75A1.75 1.75 0 1 1 10 11.75V10Zm0 0H6m0 0v1.75A1.75 1.75 0 1 1 4.25 10H6Z' fill='none' stroke='black' stroke-width='1.3' stroke-linejoin='round'/></svg>");
+}
+
 .icon-folder {
   --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M1.75 4.25c0-.83.67-1.5 1.5-1.5h3l1.5 1.5h5c.83 0 1.5.67 1.5 1.5v6.5c0 .83-.67 1.5-1.5 1.5h-9.5c-.83 0-1.5-.67-1.5-1.5Z' fill='none' stroke='black' stroke-width='1.4' stroke-linejoin='round'/></svg>");
 }
@@ -1072,7 +1123,8 @@ kbd {
   overflow: hidden;
 }
 
-.row-skeleton {
+.row-skeleton,
+.work-skel {
   height: 18px;
   width: 60%;
   border-radius: 6px;
@@ -1154,6 +1206,42 @@ kbd {
   cursor: default;
 }
 
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* The shortcut recorder: shows the keys, and listens for new ones when clicked. */
+.button.shortcut {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 92px;
+  justify-content: center;
+  color: var(--muted);
+}
+
+.button.shortcut kbd {
+  min-width: 20px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.button.shortcut.recording {
+  color: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  animation: listening 1.4s var(--ease) infinite;
+}
+
+@keyframes listening {
+  50% {
+    box-shadow: 0 0 0 5px var(--accent-soft);
+  }
+}
+
 .button.quiet {
   border-color: transparent;
   color: var(--muted);
@@ -1226,6 +1314,252 @@ html.native .app.sidebar-hidden .toolbar {
 
 html.native .day:not(.active):hover {
   background: var(--hover);
+}
+
+/* Quick capture panel: just the capture box, floating over whatever app is in front. */
+
+html.quick,
+html.quick body,
+html.quick #root {
+  height: auto;
+  overflow: hidden;
+  background: transparent;
+}
+
+.quick-frame {
+  padding: 14px 30px 46px;
+}
+
+.quick-frame .capture {
+  width: 100%;
+  border-color: var(--line-strong);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 22px 48px -12px rgba(0, 0, 0, 0.36);
+}
+
+/* Assigned */
+
+.work-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.work-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: -2px;
+}
+
+.work-refresh.busy svg {
+  animation: spin 0.8s linear infinite;
+}
+
+.work-section + .work-section {
+  margin-top: 30px;
+}
+
+.work-section h2 {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.work-section h2 span {
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--faint);
+}
+
+/* Rows reach past the column so their text lines up with the heading. */
+.work-list {
+  position: relative;
+  list-style: none;
+  margin: 0 -12px;
+  padding: 0;
+}
+
+.work-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+.work-row > * {
+  position: relative;
+  z-index: 1;
+}
+
+.work-row > .work-highlight {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: 9px;
+  background: var(--hover);
+}
+
+.state-icon {
+  flex: none;
+  align-self: flex-start;
+  width: 14px;
+  height: 14px;
+  margin-top: 4px;
+  background: var(--muted);
+  mask: var(--icon) center / contain no-repeat;
+}
+
+.work-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.work-title {
+  font-size: 14.5px;
+  line-height: 1.5;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.work-meta {
+  display: flex;
+  gap: 6px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.work-meta span + span::before {
+  content: '·';
+  margin-right: 6px;
+  color: var(--faint);
+}
+
+.work-side {
+  flex: none;
+  display: flex;
+  align-items: center;
+}
+
+/* Actions take no room until their row is selected, then open out. */
+.work-reveal {
+  display: grid;
+  grid-template-columns: 0fr;
+  opacity: 0;
+  transition: grid-template-columns 0.22s var(--ease), opacity 0.18s var(--ease);
+}
+
+.work-reveal > span {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.work-row.selected .work-reveal {
+  grid-template-columns: 1fr;
+  opacity: 1;
+}
+
+.work-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  margin-left: 6px;
+  padding: 0 6px 0 10px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  white-space: nowrap;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  transition: color 0.2s var(--ease), border-color 0.2s var(--ease), transform 0.15s var(--ease);
+}
+
+.work-action:hover {
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+
+.work-action:active {
+  transform: scale(0.96);
+}
+
+.work-action kbd {
+  padding: 0 4px;
+  font-size: 10.5px;
+  line-height: 16px;
+}
+
+.work-tag {
+  margin-left: 10px;
+  font-size: 12px;
+  white-space: nowrap;
+  color: var(--faint);
+}
+
+.work-empty {
+  margin: 0;
+  padding: 6px 0;
+  font-size: 13.5px;
+  color: var(--faint);
+}
+
+.work-empty.error {
+  color: var(--danger);
+}
+
+.work-empty code {
+  font: 12.5px 'SF Mono', ui-monospace, Menlo, monospace;
+  padding: 1px 5px;
+  border-radius: 5px;
+  color: var(--muted);
+  background: var(--code);
+}
+
+.work-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 4px;
+  padding: 10px 10px 10px 14px;
+  border-radius: 10px;
+  border: 1px dashed var(--line-strong);
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+.work-skel {
+  height: 11px;
+  margin: 5px 0;
+}
+
+.work-skel.icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  border-radius: 50%;
+}
+
+.work-skel.meta {
+  width: 22%;
+  height: 9px;
 }
 
 @media (prefers-reduced-motion: reduce) {

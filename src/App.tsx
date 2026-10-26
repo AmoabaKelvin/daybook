@@ -2,19 +2,29 @@ import type { Editor } from '@tiptap/core'
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { summarize } from '../shared/summary'
+import { Assigned } from './components/Assigned'
 import { Capture } from './components/Capture'
 import { NoteEditor } from './components/NoteEditor'
 import { Settings } from './components/Settings'
 import { Sidebar } from './components/Sidebar'
-import { forgetLinks, listNotes, loadNote, saveNote, type NoteSummary } from './lib/api'
-import { BACKLOG, dayId, isDay, shortLabel, titleFor } from './lib/dates'
+import { assigned, forgetLinks, listNotes, loadNote, saveNote, type AssignedWork, type NoteSummary, type WorkItem } from './lib/api'
+import { ASSIGNED, BACKLOG, dayId, isDay, shortLabel, titleFor } from './lib/dates'
 import { forgetLinkStates } from './lib/extensions'
 import { onNoteChanged, onQuit } from './lib/native'
-import { appendTasks, appendToMarkdown, applyMarkdown, mergeMarkdown, openTasks, toTaskBlock } from './lib/tasks'
+import { appendTasks, appendToMarkdown, applyMarkdown, linkTask, markMoved, mergeMarkdown, openTasks, toTaskBlock } from './lib/tasks'
 
 type Doc = { id: string; markdown: string; rev: number }
 
 const SAVE_DELAY = 400
+// Coming back to the window checks for new assigned work, but not more often than this.
+const WORK_RECHECK = 30_000
+
+const pageMotion = {
+  initial: { opacity: 0, y: 10, filter: 'blur(4px)' },
+  animate: { opacity: 1, y: 0, filter: 'blur(0px)' },
+  exit: { opacity: 0, y: -6, filter: 'blur(2px)', transition: { duration: 0.12 } },
+  transition: { type: 'spring', stiffness: 380, damping: 34 },
+} as const
 
 export default function App() {
   const today = dayId()
@@ -27,6 +37,8 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [dismissedCarry, setDismissedCarry] = useState(false)
+  const [work, setWork] = useState<AssignedWork | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
 
   const editor = useRef<Editor | null>(null)
   // The open note's markdown as of the last edit, and the unsaved part of it.
@@ -35,6 +47,7 @@ export default function App() {
   // What each note looked like on disk when we last read or wrote it: the base for merges.
   const base = useRef(new Map<string, string>())
   const saveTimer = useRef<number | undefined>(undefined)
+  const workRequest = useRef({ id: 0, at: 0 })
 
   const flush = useCallback(() => {
     window.clearTimeout(saveTimer.current)
@@ -66,14 +79,16 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false
-    Promise.resolve(flush()).then(() =>
-      loadNote(current).then((markdown) => {
+    Promise.resolve(flush()).then(() => {
+      // The assigned page isn't a note, so no note is open while it shows.
+      if (current === ASSIGNED) return setDoc(null)
+      return loadNote(current).then((markdown) => {
         if (cancelled) return
         base.current.set(current, markdown)
         text.current = { id: current, markdown }
         setDoc({ id: current, markdown, rev: 0 })
-      }),
-    )
+      })
+    })
     return () => {
       cancelled = true
     }
@@ -97,7 +112,7 @@ export default function App() {
 
   const ids = useMemo(() => {
     const days = [...notes.keys()].filter((id) => isDay(id) && id !== today).sort().reverse()
-    return [BACKLOG, today, ...days]
+    return [BACKLOG, ASSIGNED, today, ...days]
   }, [notes, today])
 
   function currentMarkdown() {
@@ -129,10 +144,35 @@ export default function App() {
   })
   useEffect(() => onNoteChanged((id, content) => externalChange.current(id, content)), [])
 
+  const loadWork = useCallback((fresh: boolean) => {
+    const id = ++workRequest.current.id
+    workRequest.current.at = Date.now()
+    assigned(fresh)
+      .catch((e) => ({ github: null, linear: null, githubError: String(e), linearError: null }))
+      .then((next) => {
+        if (id !== workRequest.current.id) return
+        setWork(next)
+        setRefreshing(false)
+      })
+  }, [])
+
+  const refreshWork = useCallback(() => {
+    setRefreshing(true)
+    loadWork(true)
+  }, [loadWork])
+
+  useEffect(() => {
+    loadWork(false)
+    const onFocus = () => Date.now() - workRequest.current.at > WORK_RECHECK && refreshWork()
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [loadWork, refreshWork])
+
   // After connecting or disconnecting Linear, look every link up again.
   function onLinksChanged() {
     forgetLinks()
     forgetLinkStates()
+    refreshWork()
     if (doc && !source) setDoc({ ...doc, markdown: currentMarkdown(), rev: doc.rev + 1 })
   }
 
@@ -165,17 +205,29 @@ export default function App() {
     await addTasks(target === 'today' ? today : BACKLOG, await toTaskBlock(text, subtasks))
   }
 
+  async function pull(item: WorkItem, target: 'today' | typeof BACKLOG) {
+    await addTasks(target === 'today' ? today : BACKLOG, linkTask(item.title, item.url))
+  }
+
   // Yesterday's leftovers, offered when today is still empty.
   const carry = useMemo(() => {
     const todayNote = notes.get(today)
-    if (current !== today || dismissedCarry || (todayNote && todayNote.open + todayNote.done > 0)) return null
+    if (current !== today || dismissedCarry || (todayNote && todayNote.open + todayNote.done + todayNote.moved > 0)) return null
     return [...notes.values()].filter((n) => isDay(n.id) && n.id < today && n.open > 0).sort((a, b) => b.id.localeCompare(a.id))[0] ?? null
   }, [notes, today, current, dismissedCarry])
 
   async function carryOver() {
     if (!carry) return
-    const tasks = openTasks(await loadNote(carry.id))
-    if (tasks) await addTasks(today, tasks)
+    const markdown = await loadNote(carry.id)
+    const tasks = openTasks(markdown)
+    if (tasks) {
+      await addTasks(today, tasks)
+      // The tasks now live on today, so the day they came from shows them as moved.
+      const moved = markMoved(markdown)
+      base.current.set(carry.id, moved)
+      record(carry.id, moved)
+      await saveNote(carry.id, moved)
+    }
     setDismissedCarry(true)
   }
 
@@ -185,6 +237,9 @@ export default function App() {
       if (mod && event.key.toLowerCase() === 'k') {
         event.preventDefault()
         setCapturing((c) => !c)
+      } else if (mod && event.key.toLowerCase() === 'j') {
+        event.preventDefault()
+        setCurrent(ASSIGNED)
       } else if (mod && event.key === ',') {
         event.preventDefault()
         setSettingsOpen((s) => !s)
@@ -210,11 +265,23 @@ export default function App() {
     return () => window.clearTimeout(timer)
   }, [toast])
 
+  // A linked PR merged or an issue closed, so its task got ticked off.
+  useEffect(() => {
+    function onTicked(event: Event) {
+      const { title, state } = (event as CustomEvent<{ title: string; state: string }>).detail
+      const short = title.length > 40 ? `${title.slice(0, 39).trimEnd()}…` : title
+      setToast(`${state === 'merged' ? 'Merged' : 'Done'}: ticked off “${short}”`)
+    }
+    window.addEventListener('daybook:ticked', onTicked)
+    return () => window.removeEventListener('daybook:ticked', onTicked)
+  }, [])
+
   const closeSettings = useCallback(() => setSettingsOpen(false), [])
 
   const summary = doc ? notes.get(doc.id) : undefined
   const total = summary ? summary.open + summary.done : 0
   const heading = doc ? titleFor(doc.id) : null
+  const workCount = work && (work.github?.length ?? 0) + (work.linear?.length ?? 0)
 
   return (
     <div className={sidebar ? 'app' : 'app sidebar-hidden'}>
@@ -227,7 +294,7 @@ export default function App() {
             exit={{ width: 0, opacity: 0 }}
             transition={{ type: 'spring', stiffness: 420, damping: 40 }}
           >
-            <Sidebar ids={ids} notes={notes} current={current} onSelect={setCurrent} />
+            <Sidebar ids={ids} notes={notes} current={current} assignedCount={workCount} onSelect={setCurrent} />
           </motion.aside>
         )}
       </AnimatePresence>
@@ -262,15 +329,20 @@ export default function App() {
 
         <div className="scroll">
           <AnimatePresence mode="wait" initial={false}>
-            {doc && heading && (
-              <motion.article
-                key={doc.id}
-                className="page"
-                initial={{ opacity: 0, y: 10, filter: 'blur(4px)' }}
-                animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-                exit={{ opacity: 0, y: -6, filter: 'blur(2px)', transition: { duration: 0.12 } }}
-                transition={{ type: 'spring', stiffness: 380, damping: 34 }}
-              >
+            {current === ASSIGNED ? (
+              <motion.article key={ASSIGNED} className="page" {...pageMotion}>
+                <Assigned
+                  work={work}
+                  refreshing={refreshing}
+                  notes={notes}
+                  paused={capturing || settingsOpen}
+                  onRefresh={refreshWork}
+                  onAdd={pull}
+                  onOpenSettings={() => setSettingsOpen(true)}
+                />
+              </motion.article>
+            ) : doc && heading && (
+              <motion.article key={doc.id} className="page" {...pageMotion}>
                 <header className="page-header">
                   <h1>{heading.title}</h1>
                   <div className="page-meta">

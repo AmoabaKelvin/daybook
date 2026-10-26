@@ -18,6 +18,22 @@ type GithubInfo = { title: string; state: 'open' | 'closed' | 'merged' | 'draft'
 const githubCache = new Map<string, { at: number; info: GithubInfo | null }>()
 const GITHUB_TTL = 2 * 60 * 1000
 
+type WorkItem = {
+  source: 'github'
+  kind: 'pull' | 'issue'
+  url: string
+  title: string
+  ref: string
+  state: 'open' | 'draft'
+  status: null
+  group: 'review' | 'assigned'
+  updated: number
+}
+type Assigned = { github: WorkItem[] | null; linear: null; githubError: string | null; linearError: null }
+let assignedCache: { at: number; value: Assigned } | null = null
+const ASSIGNED_TTL = 60 * 1000
+const SEARCH_JQ = '[.items[] | {url: .html_url, title, pull: (.pull_request != null), draft, updated: .updated_at}]'
+
 function send(res: ServerResponse, status: number, body: unknown) {
   res.statusCode = status
   res.setHeader('content-type', typeof body === 'string' ? 'text/markdown; charset=utf-8' : 'application/json')
@@ -64,6 +80,45 @@ async function githubInfo(url: string): Promise<GithubInfo | null> {
   return info
 }
 
+async function search(query: string, group: WorkItem['group']): Promise<WorkItem[]> {
+  const args = ['api', '-X', 'GET', 'search/issues', '-f', `q=${query}`, '-f', 'sort=updated', '-f', 'per_page=50', '--jq', SEARCH_JQ]
+  const { stdout } = await run('gh', args, { timeout: 8000 })
+  const found = JSON.parse(stdout) as { url: string; title: string; pull: boolean; draft: boolean | null; updated: string }[]
+  return found.map((item) => {
+    const [, , repo, , number] = new URL(item.url).pathname.split('/')
+    return {
+      source: 'github',
+      kind: item.pull ? 'pull' : 'issue',
+      url: item.url,
+      title: item.title,
+      ref: `${repo}#${number}`,
+      state: item.draft ? 'draft' : 'open',
+      status: null,
+      group,
+      updated: Date.parse(item.updated),
+    }
+  })
+}
+
+/** Review requests and assignments through `gh`. Linear needs the Mac app, where its key lives. */
+async function assigned(fresh: boolean): Promise<Assigned> {
+  if (!fresh && assignedCache && Date.now() - assignedCache.at < ASSIGNED_TTL) return assignedCache.value
+  let value: Assigned
+  try {
+    const [review, mine] = await Promise.all([
+      search('review-requested:@me is:pr is:open archived:false', 'review'),
+      search('assignee:@me is:open archived:false', 'assigned'),
+    ])
+    const seen = new Set(review.map((item) => item.url))
+    value = { github: [...review, ...mine.filter((item) => !seen.has(item.url))], linear: null, githubError: null, linearError: null }
+  } catch {
+    const signedIn = await run('gh', ['auth', 'token']).then(() => true, () => false)
+    value = { github: null, linear: null, githubError: signedIn ? "Couldn't reach GitHub." : null, linearError: null }
+  }
+  if (!value.githubError) assignedCache = { at: Date.now(), value }
+  return value
+}
+
 async function handle(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url ?? '/', 'http://local')
   const path = url.pathname.replace(/^\/api/, '')
@@ -73,6 +128,8 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   if (path === '/github' && req.method === 'GET') {
     return send(res, 200, await githubInfo(url.searchParams.get('url') ?? ''))
   }
+
+  if (path === '/assigned' && req.method === 'GET') return send(res, 200, await assigned(url.searchParams.has('fresh')))
 
   const note = path.match(/^\/notes\/([^/]+)$/)
   if (note && ID.test(note[1])) {
