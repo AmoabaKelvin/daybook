@@ -2,15 +2,17 @@ import type { Editor } from '@tiptap/core'
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { summarize } from '../shared/summary'
+import { Agent } from './components/Agent'
 import { Assigned } from './components/Assigned'
 import { Capture } from './components/Capture'
 import { NoteEditor } from './components/NoteEditor'
 import { Settings } from './components/Settings'
 import { Sidebar } from './components/Sidebar'
-import { assigned, forgetLinks, listNotes, loadNote, saveNote, type AssignedWork, type NoteSummary, type WorkItem } from './lib/api'
-import { ASSIGNED, BACKLOG, dayId, isDay, shortLabel, titleFor } from './lib/dates'
+import { useAgentThread } from './lib/agent'
+import { agentSettings, assigned, forgetLinks, listNotes, loadNote, saveNote, type AgentSettings, type AssignedWork, type NoteSummary, type WorkItem } from './lib/api'
+import { AGENT, ASSIGNED, BACKLOG, dayId, isDay, shortLabel, titleFor } from './lib/dates'
 import { forgetLinkStates } from './lib/extensions'
-import { onNoteChanged, onQuit } from './lib/native'
+import { onAsk, onNoteChanged, onQuit } from './lib/native'
 import { appendTasks, appendToMarkdown, applyMarkdown, linkTask, markMoved, mergeMarkdown, openTasks, toTaskBlock } from './lib/tasks'
 
 type Doc = { id: string; markdown: string; rev: number }
@@ -39,6 +41,7 @@ export default function App() {
   const [dismissedCarry, setDismissedCarry] = useState(false)
   const [work, setWork] = useState<AssignedWork | null>(null)
   const [refreshing, setRefreshing] = useState(false)
+  const [agentPrefs, setAgentPrefs] = useState<AgentSettings | null>(null)
 
   const editor = useRef<Editor | null>(null)
   // The open note's markdown as of the last edit, and the unsaved part of it.
@@ -80,8 +83,8 @@ export default function App() {
   useEffect(() => {
     let cancelled = false
     Promise.resolve(flush()).then(() => {
-      // The assigned page isn't a note, so no note is open while it shows.
-      if (current === ASSIGNED) return setDoc(null)
+      // The assigned and agent pages aren't notes, so no note is open while they show.
+      if (current === ASSIGNED || current === AGENT) return setDoc(null)
       return loadNote(current).then((markdown) => {
         if (cancelled) return
         base.current.set(current, markdown)
@@ -111,8 +114,9 @@ export default function App() {
   }, [])
 
   const ids = useMemo(() => {
-    const days = [...notes.keys()].filter((id) => isDay(id) && id !== today).sort().reverse()
-    return [BACKLOG, ASSIGNED, today, ...days]
+    const days = [...notes.keys()].filter((id) => isDay(id) && id !== today).sort()
+    // Today, then the days ahead in order, then earlier days newest first.
+    return [BACKLOG, ASSIGNED, AGENT, today, ...days.filter((id) => id > today), ...days.filter((id) => id < today).reverse()]
   }, [notes, today])
 
   function currentMarkdown() {
@@ -167,6 +171,28 @@ export default function App() {
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
   }, [loadWork, refreshWork])
+
+  const reloadNotes = useCallback(() => {
+    listNotes().then((list) => setNotes(new Map(list.map((n) => [n.id, n]))))
+  }, [])
+  const agent = useAgentThread(flush, reloadNotes)
+  const { send } = agent
+
+  const loadAgentSettings = useCallback(() => {
+    agentSettings().then(setAgentPrefs).catch(() => {})
+  }, [])
+  useEffect(loadAgentSettings, [loadAgentSettings])
+
+  // ⌘↵ in the capture box, here or over another app, hands what was typed to the agent.
+  const ask = useCallback(
+    (text: string) => {
+      setCapturing(false)
+      setCurrent(AGENT)
+      send(text)
+    },
+    [send],
+  )
+  useEffect(() => onAsk(ask), [ask])
 
   // After connecting or disconnecting Linear, look every link up again.
   function onLinksChanged() {
@@ -240,6 +266,9 @@ export default function App() {
       } else if (mod && event.key.toLowerCase() === 'j') {
         event.preventDefault()
         setCurrent(ASSIGNED)
+      } else if (mod && event.key.toLowerCase() === 'l') {
+        event.preventDefault()
+        setCurrent(AGENT)
       } else if (mod && event.key === ',') {
         event.preventDefault()
         setSettingsOpen((s) => !s)
@@ -276,7 +305,10 @@ export default function App() {
     return () => window.removeEventListener('daybook:ticked', onTicked)
   }, [])
 
-  const closeSettings = useCallback(() => setSettingsOpen(false), [])
+  const closeSettings = useCallback(() => {
+    setSettingsOpen(false)
+    loadAgentSettings()
+  }, [loadAgentSettings])
 
   const summary = doc ? notes.get(doc.id) : undefined
   const total = summary ? summary.open + summary.done : 0
@@ -294,7 +326,14 @@ export default function App() {
             exit={{ width: 0, opacity: 0 }}
             transition={{ type: 'spring', stiffness: 420, damping: 40 }}
           >
-            <Sidebar ids={ids} notes={notes} current={current} assignedCount={workCount} onSelect={setCurrent} />
+            <Sidebar
+              ids={ids}
+              notes={notes}
+              current={current}
+              assignedCount={workCount}
+              agentState={agent.pending ? 'thinking' : agent.waiting ? 'waiting' : null}
+              onSelect={setCurrent}
+            />
           </motion.aside>
         )}
       </AnimatePresence>
@@ -327,9 +366,19 @@ export default function App() {
           </div>
         </div>
 
-        <div className="scroll">
+        <div className={current === AGENT ? 'scroll agent-scroll' : 'scroll'}>
           <AnimatePresence mode="wait" initial={false}>
-            {current === ASSIGNED ? (
+            {current === AGENT ? (
+              <motion.article key={AGENT} className="page agent-page" {...pageMotion}>
+                <Agent
+                  agent={agent}
+                  settings={agentPrefs}
+                  paused={capturing || settingsOpen}
+                  onOpenSettings={() => setSettingsOpen(true)}
+                  onOpenNote={setCurrent}
+                />
+              </motion.article>
+            ) : current === ASSIGNED ? (
               <motion.article key={ASSIGNED} className="page" {...pageMotion}>
                 <Assigned
                   work={work}
@@ -413,13 +462,13 @@ export default function App() {
         </div>
       </main>
 
-      <Capture open={capturing} onClose={() => setCapturing(false)} onSubmit={capture} />
+      <Capture open={capturing} onClose={() => setCapturing(false)} onSubmit={capture} onAsk={ask} />
       <Settings open={settingsOpen} onClose={closeSettings} onLinksChanged={onLinksChanged} />
 
       <AnimatePresence>
         {toast && (
           <motion.div
-            className="toast"
+            className={current === AGENT ? 'toast raised' : 'toast'}
             initial={{ opacity: 0, y: 12, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 8, scale: 0.98 }}

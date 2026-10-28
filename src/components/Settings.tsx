@@ -1,6 +1,22 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useState } from 'react'
-import { clearLinearKey, getSettings, installCli, revealNotes, setCaptureShortcut, setLinearKey, type Settings as SettingsData } from '../lib/api'
+import {
+  agentSettings,
+  clearLinearKey,
+  clearOpenRouterKey,
+  connectOpenRouter,
+  getSettings,
+  installCli,
+  revealNotes,
+  setAgentPrefs,
+  setCaptureShortcut,
+  setLinearKey,
+  setOpenRouterKey,
+  type AgentPrefs,
+  type AgentSettings,
+  type ProviderId,
+  type Settings as SettingsData,
+} from '../lib/api'
 import { isNative, openLink } from '../lib/native'
 
 type Props = {
@@ -63,7 +79,8 @@ function SettingsSheet({ onClose, onLinksChanged }: Omit<Props, 'open'>) {
               )}
             </Row>
             <QuickCapture settings={settings} onChange={setSettings} />
-            <Agents settings={settings} onChange={setSettings} />
+            <AgentRow />
+            <CommandLine settings={settings} onChange={setSettings} />
             <Row icon="folder" title="Notes" loading={!settings}>
               <div className="row-inline">
                 <code>{settings?.notesDir}</code>
@@ -257,7 +274,7 @@ function shortcutKeys(accelerator: string) {
   return accelerator.split('+').map((part) => KEY_SYMBOLS[part] ?? part)
 }
 
-function Agents({ settings, onChange }: { settings: SettingsData | null; onChange: (s: SettingsData) => void }) {
+function CommandLine({ settings, onChange }: { settings: SettingsData | null; onChange: (s: SettingsData) => void }) {
   const [error, setError] = useState<string | null>(null)
 
   async function install() {
@@ -272,7 +289,7 @@ function Agents({ settings, onChange }: { settings: SettingsData | null; onChang
   }
 
   return (
-    <Row icon="terminal" title="Agents" loading={!settings}>
+    <Row icon="terminal" title="Command line" loading={!settings}>
       <div className="row-inline">
         {settings?.cliInstalled ? (
           <Status ok>
@@ -290,6 +307,168 @@ function Agents({ settings, onChange }: { settings: SettingsData | null; onChang
       {error && <p className="row-error">{error}</p>}
       <p className="row-help">
         Agents like Claude Code can run <code>daybook help</code> to learn the rest. Changes they make show up here right away.
+      </p>
+    </Row>
+  )
+}
+
+const PROVIDERS: [ProviderId, string][] = [
+  ['claude', 'Claude'],
+  ['codex', 'Codex'],
+  ['openrouter', 'OpenRouter'],
+]
+const CLAUDE_MODELS: [string, string][] = [
+  ['haiku', 'Haiku'],
+  ['sonnet', 'Sonnet'],
+  ['opus', 'Opus'],
+]
+const MODEL_FIELD = { claude: 'claudeModel', codex: 'codexModel', openrouter: 'openrouterModel' } as const
+
+function AgentRow() {
+  const [agent, setAgent] = useState<AgentSettings | null>(null)
+  // The model being typed, until it's saved.
+  const [model, setModel] = useState<string | null>(null)
+  const [key, setKey] = useState('')
+  const [busy, setBusy] = useState<'connect' | 'key' | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const load = useCallback(() => agentSettings().then(setAgent), [])
+  useEffect(() => {
+    load()
+  }, [load])
+
+  const prefs = agent?.prefs
+  const provider = prefs?.provider ?? 'claude'
+  const status = agent?.providers.find((p) => p.id === provider)
+
+  async function save(next: AgentPrefs) {
+    if (!agent) return
+    setAgent({ ...agent, prefs: next })
+    setError(null)
+    await setAgentPrefs(next).catch((e) => setError(String(e)))
+  }
+
+  function saveModel() {
+    if (prefs && model !== null && model.trim() !== prefs[MODEL_FIELD[provider]]) save({ ...prefs, [MODEL_FIELD[provider]]: model.trim() })
+    setModel(null)
+  }
+
+  async function connect(run: () => Promise<void>, kind: 'connect' | 'key') {
+    setBusy(kind)
+    setError(null)
+    try {
+      await run()
+      setKey('')
+      await load()
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function disconnect() {
+    await clearOpenRouterKey()
+    load()
+  }
+
+  return (
+    <Row icon="sparkle" title="Agent" loading={!agent}>
+      <div className="row-inline">
+        <div className="segmented" role="radiogroup" aria-label="Provider">
+          {PROVIDERS.map(([id, label]) => (
+            <button key={id} role="radio" aria-checked={provider === id} className={provider === id ? 'on' : ''} onClick={() => {
+                if (!prefs) return
+                setModel(null)
+                save({ ...prefs, provider: id })
+              }}>
+              {provider === id && <motion.span layoutId="agent-provider" className="segmented-pill" transition={{ type: 'spring', stiffness: 600, damping: 40 }} />}
+              <span>{label}</span>
+            </button>
+          ))}
+        </div>
+        {provider === 'claude' && prefs && (
+          <div className="segmented" role="radiogroup" aria-label="Model">
+            {CLAUDE_MODELS.map(([id, label]) => (
+              <button key={id} role="radio" aria-checked={prefs.claudeModel === id} className={prefs.claudeModel === id ? 'on' : ''} onClick={() => save({ ...prefs, claudeModel: id })}>
+                {prefs.claudeModel === id && <motion.span layoutId="agent-model" className="segmented-pill" transition={{ type: 'spring', stiffness: 600, damping: 40 }} />}
+                <span>{label}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div key={provider} className="agent-settings" {...swap}>
+          <div className="row-inline">
+            {status && <Status ok={status.ready}>{status.detail}</Status>}
+            {provider === 'openrouter' && status?.ready && (
+              <button className="button quiet" onClick={disconnect}>
+                Disconnect
+              </button>
+            )}
+            {provider === 'openrouter' && !status?.ready && (
+              <button className="button primary" onClick={() => connect(connectOpenRouter, 'connect')} disabled={!!busy}>
+                {busy === 'connect' ? 'Waiting for the browser…' : 'Connect'}
+              </button>
+            )}
+          </div>
+          {provider !== 'claude' && (
+            <form
+              className="row-inline"
+              onSubmit={(e) => {
+                e.preventDefault()
+                saveModel()
+              }}
+            >
+              <input
+                className="field"
+                value={model ?? prefs?.[MODEL_FIELD[provider]] ?? ''}
+                onChange={(e) => setModel(e.target.value)}
+                onBlur={saveModel}
+                placeholder={provider === 'codex' ? 'Codex’s default model' : 'anthropic/claude-haiku-5.5'}
+                spellCheck={false}
+                autoComplete="off"
+                aria-label="Model"
+              />
+            </form>
+          )}
+          {provider === 'openrouter' && !status?.ready && (
+            <form
+              className="row-inline"
+              onSubmit={(e) => {
+                e.preventDefault()
+                if (key.trim()) connect(() => setOpenRouterKey(key.trim()), 'key')
+              }}
+            >
+              <input
+                className="field"
+                type="password"
+                value={key}
+                onChange={(e) => setKey(e.target.value)}
+                placeholder="Or paste a key: sk-or-…"
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <button className="button" disabled={!!busy || !key.trim()}>
+                {busy === 'key' ? 'Checking…' : 'Save'}
+              </button>
+            </form>
+          )}
+        </motion.div>
+      </AnimatePresence>
+      <AnimatePresence>
+        {error && (
+          <motion.p className="row-error" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>
+            {error}
+          </motion.p>
+        )}
+      </AnimatePresence>
+      <p className="row-help">
+        {provider === 'openrouter'
+          ? 'Pay as you go with any model that supports structured output. The key is kept in your Keychain.'
+          : `Uses your own ${provider === 'claude' ? 'Claude Code' : 'Codex'} sign-in on this Mac.`}{' '}
+        Nothing is written until you apply it. <kbd>⌘L</kbd> opens it.
       </p>
     </Row>
   )

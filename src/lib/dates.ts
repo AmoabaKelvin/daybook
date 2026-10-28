@@ -1,6 +1,8 @@
 export const BACKLOG = 'backlog'
 /** Not a note: the page of GitHub and Linear work assigned to you. */
 export const ASSIGNED = 'assigned'
+/** Not a note: the page where you tell the agent what's on your plate. */
+export const AGENT = 'agent'
 
 export function dayId(date = new Date()) {
   const y = date.getFullYear()
@@ -26,11 +28,15 @@ function daysAgo(id: string) {
 export function shortLabel(id: string) {
   if (id === BACKLOG) return 'Backlog'
   if (id === ASSIGNED) return 'Assigned'
+  if (id === AGENT) return 'Agent'
   const ago = daysAgo(id)
   if (ago === 0) return 'Today'
   if (ago === 1) return 'Yesterday'
+  if (ago === -1) return 'Tomorrow'
   const date = parseDay(id)
   if (ago > 1 && ago < 7) return date.toLocaleDateString(undefined, { weekday: 'long' })
+  // Days ahead keep their date, so this Friday never reads like last Friday.
+  if (ago < -1 && ago > -7) return date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
   return date.toLocaleDateString(undefined, {
     month: 'short',
     day: 'numeric',
@@ -41,13 +47,14 @@ export function shortLabel(id: string) {
 export function titleFor(id: string) {
   if (id === BACKLOG) return { title: 'Backlog', subtitle: 'Someday, not today' }
   if (id === ASSIGNED) return { title: 'Assigned', subtitle: 'From GitHub and Linear' }
+  if (id === AGENT) return { title: 'Agent', subtitle: 'Tell it what’s on your plate' }
   const date = parseDay(id)
   const ago = daysAgo(id)
   const weekday = date.toLocaleDateString(undefined, { weekday: 'long' })
   return {
-    title: ago === 0 ? 'Today' : ago === 1 ? 'Yesterday' : weekday,
+    title: ago === 0 ? 'Today' : ago === 1 ? 'Yesterday' : ago === -1 ? 'Tomorrow' : weekday,
     subtitle: date.toLocaleDateString(undefined, {
-      weekday: ago <= 1 ? 'long' : undefined,
+      weekday: Math.abs(ago) <= 1 ? 'long' : undefined,
       month: 'long',
       day: 'numeric',
       year: date.getFullYear() === new Date().getFullYear() ? undefined : 'numeric',

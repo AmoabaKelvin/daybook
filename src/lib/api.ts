@@ -129,3 +129,84 @@ export function hideQuick() {
 export function resizeQuick(height: number) {
   return invoke<void>('resize_quick', { height })
 }
+
+// The agent: it proposes changes to the notes, which only get written once you apply them.
+
+export type AgentAction = 'add' | 'done' | 'move' | 'edit' | 'remove'
+
+/** An existing task, as it was when the change was proposed. */
+export type TaskRef = { note: string; line: number; text: string }
+
+/** `note` is where an added or moved task goes, otherwise the note the task is in. */
+export type AgentChange = { action: AgentAction; note: string; text: string; subtasks: string[]; task: TaskRef | null }
+
+export type AgentPlan = { reply: string; changes: AgentChange[] }
+
+export type AgentTurn = { role: 'user' | 'assistant'; text: string; changes?: AgentChange[]; applied?: boolean }
+
+/** A note before and after a plan was applied, for undo. */
+export type Snapshot = { id: string; before: string; after: string }
+
+export type ProviderId = 'claude' | 'codex' | 'openrouter'
+
+/** An empty model means the provider's default. */
+export type AgentPrefs = { provider: ProviderId; claudeModel: string; codexModel: string; openrouterModel: string }
+
+export type ProviderStatus = { id: ProviderId; ready: boolean; detail: string }
+
+export type AgentSettings = { prefs: AgentPrefs; providers: ProviderStatus[] }
+
+async function post<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(path, { method: 'POST', body: JSON.stringify(body) })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export function agentAsk(turns: AgentTurn[]) {
+  if (isNative) return invoke<AgentPlan>('agent_ask', { turns })
+  return post<AgentPlan>('/api/agent/ask', turns)
+}
+
+export function agentApply(changes: AgentChange[]) {
+  if (isNative) return invoke<Snapshot[]>('agent_apply', { changes })
+  return post<Snapshot[]>('/api/agent/apply', changes)
+}
+
+/** Puts the notes back; returns how many had changed since and were left alone. */
+export function agentUndo(snapshots: Snapshot[]) {
+  if (isNative) return invoke<number>('agent_undo', { snapshots })
+  return post<number>('/api/agent/undo', snapshots)
+}
+
+export function agentWarm() {
+  if (isNative) invoke('agent_warm')
+}
+
+export function agentCancel() {
+  if (isNative) invoke('agent_cancel')
+}
+
+export async function agentSettings(): Promise<AgentSettings | null> {
+  return isNative ? invoke<AgentSettings>('agent_settings') : null
+}
+
+export function setAgentPrefs(prefs: AgentPrefs) {
+  return invoke<void>('set_agent_prefs', { prefs })
+}
+
+export function connectOpenRouter() {
+  return invoke<void>('connect_openrouter')
+}
+
+export function setOpenRouterKey(key: string) {
+  return invoke<void>('set_openrouter_key', { key })
+}
+
+export function clearOpenRouterKey() {
+  return invoke<void>('clear_openrouter_key')
+}
+
+/** From the quick capture panel: opens the main window and asks the agent there. */
+export function quickAsk(text: string) {
+  return invoke<void>('quick_ask', { text })
+}

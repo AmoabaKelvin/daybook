@@ -45,3 +45,12 @@ export function onQuickPanel(handle: (open: boolean) => void) {
     stops.forEach((stop) => stop.then((unlisten) => unlisten()))
   }
 }
+
+/** Something typed into the quick capture panel, handed to the agent here. */
+export function onAsk(handle: (text: string) => void) {
+  if (!isNative) return () => {}
+  const stop = listen<string>('daybook://ask', (event) => handle(event.payload))
+  return () => {
+    stop.then((unlisten) => unlisten())
+  }
+}

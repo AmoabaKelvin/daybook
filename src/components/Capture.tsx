@@ -8,14 +8,16 @@ type Target = 'today' | typeof BACKLOG
 type CardProps = {
   onClose: () => void
   onSubmit: (text: string, subtasks: string[], target: Target) => Promise<void>
+  /** ⌘↵: hand what was typed to the agent instead. */
+  onAsk?: (text: string) => void
 }
 
-export function Capture({ open, onClose, onSubmit }: CardProps & { open: boolean }) {
+export function Capture({ open, onClose, onSubmit, onAsk }: CardProps & { open: boolean }) {
   return (
     <AnimatePresence>
       {open && (
         <motion.div className="capture-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={onClose}>
-          <CaptureCard onClose={onClose} onSubmit={onSubmit} />
+          <CaptureCard onClose={onClose} onSubmit={onSubmit} onAsk={onAsk} />
         </motion.div>
       )}
     </AnimatePresence>
@@ -30,7 +32,7 @@ const row = (text = ''): Row => ({ key: nextRow++, text })
  * The capture box, shown by the ⌘K dialog and by the quick capture panel.
  * The entry is rows[0]; every row after it is a sub-task.
  */
-export function CaptureCard({ onClose, onSubmit }: CardProps) {
+export function CaptureCard({ onClose, onSubmit, onAsk }: CardProps) {
   const [rows, setRows] = useState(() => [row()])
   const [focused, setFocused] = useState(0)
   const [target, setTarget] = useState<Target>('today')
@@ -47,6 +49,13 @@ export function CaptureCard({ onClose, onSubmit }: CardProps) {
     onClose()
   }
 
+  function ask() {
+    const [entry, ...subtasks] = rows.map((r) => r.text.trim())
+    if (!entry || !onAsk) return
+    const steps = subtasks.filter(Boolean)
+    onAsk(steps.length ? `${entry}\n${steps.map((s) => `- ${s}`).join('\n')}` : entry)
+  }
+
   function edit(index: number, text: string) {
     setRows((rs) => rs.map((r, i) => (i === index ? { ...r, text } : r)))
   }
@@ -54,7 +63,10 @@ export function CaptureCard({ onClose, onSubmit }: CardProps) {
   function onKeyDown(event: React.KeyboardEvent<HTMLInputElement>, index: number) {
     const { key, shiftKey } = event
     if (key === 'Escape') onClose()
-    else if (key === 'Enter' && shiftKey) {
+    else if (key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault()
+      ask()
+    } else if (key === 'Enter' && shiftKey) {
       event.preventDefault()
       setRows((rs) => [...rs.slice(0, index + 1), row(), ...rs.slice(index + 1)])
       setFocused(index + 1)
@@ -130,7 +142,7 @@ export function CaptureCard({ onClose, onSubmit }: CardProps) {
           ))}
         </div>
         <span className="capture-keys">
-          <kbd>⇧↵</kbd> sub-task <kbd>tab</kbd> switch <kbd>↵</kbd> add
+          <kbd>⇧↵</kbd> sub-task <kbd>tab</kbd> switch {onAsk && <><kbd>⌘↵</kbd> agent </>}<kbd>↵</kbd> add
         </span>
       </div>
     </motion.div>

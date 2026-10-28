@@ -12,6 +12,7 @@ A small daily notes app for the things you need to work on. You write markdown a
 - Linear issue links show their title and status (triage, backlog, todo, in progress, done, canceled) once you add an API key in Settings (`⌘,`). The key is stored in your Keychain
 - `⌘K` captures a task from anywhere in the app. `⇧↵` adds a sub-task under it, and `tab` switches between Today and Backlog
 - `⌥Space` opens the same capture box over any app, so you can grab something from Slack without switching windows. Change or turn off the shortcut in Settings
+- The Agent page (`⌘L`) takes whatever you type, like a brain dump, a few pasted links or "push zig to Friday", and suggests where each thing goes. You look the plan over before anything is written. It uses your own Claude Code or Codex login, or an OpenRouter key
 - The menu bar icon shows how many tasks are open today. Its menu lists them so you can tick them off, and has quick capture
 - When today is empty, it offers to bring over the most recent day's unfinished tasks
 - Tasks you bring over are marked moved (`- [>] `) on the day they came from, so that day reads as finished
@@ -25,6 +26,20 @@ A small daily notes app for the things you need to work on. You write markdown a
   <img src="docs/screenshots/capture-subtasks.png" width="49%" alt="Capturing a PR review with two sub-tasks">
 </p>
 
+## Agent
+
+Tell it what's on your plate in your own words. It reads your notes (today, the days ahead, the last week and the backlog) and the GitHub and Linear work assigned to you. Then it proposes changes: add tasks with sub-tasks, tick off, move to another day, rewrite or remove.
+
+The changes show up as a plan grouped by day. Leave out any you don't want, reply to adjust the plan ("make the offsite Thursday"), then `⌘↵` applies it. Undo puts the notes back. It also answers questions like "what's still open this week?". In the capture box, `⌘↵` hands what you typed to the agent instead of adding it as a task.
+
+Pick the model in Settings → Agent:
+
+- **Claude** runs your own `claude` CLI (Claude Code) with your Claude.ai login. Haiku, Sonnet (the default) or Opus. Daybook keeps a process warmed up, so answers take a few seconds
+- **Codex** runs your own `codex` CLI with your ChatGPT login. It's slower
+- **OpenRouter** works with any model that supports structured output. Connect signs you in through the browser, or you can paste a key. The key is kept in your Keychain
+
+The model only proposes changes. It gets no tools, and Daybook does all the writing.
+
 ## A new day
 
 Each morning starts with an empty page. If the last day still has open tasks, one click brings them over.
@@ -36,7 +51,7 @@ Each morning starts with an empty page. If the last day still has open tasks, on
 
 ## Settings
 
-Linear, GitHub, the `daybook` command and the notes folder, in one place.
+Linear, GitHub, quick capture, the agent's model, the `daybook` command and the notes folder, in one place.
 
 ![Settings with Linear, GitHub, Agents and Notes](docs/screenshots/settings.png)
 
@@ -55,9 +70,9 @@ Closing the window hides it, and clicking the Dock icon brings it back. `⌘Q` s
 
 Notes are saved as plain markdown in `~/Daybook/YYYY-MM-DD.md` (plus `backlog.md`). Set `DAYBOOK_DIR` to use a different folder.
 
-## Agents and the command line
+## The command line
 
-The app binary is also a `daybook` command. Settings → Agents → Install links it at `~/.local/bin/daybook`. Agents like Claude Code can run `daybook help` to learn it:
+The app binary is also a `daybook` command. Settings → Command line → Install links it at `~/.local/bin/daybook`. Agents like Claude Code can run `daybook help` to learn it:
 
 ```sh
 daybook add Review https://github.com/acme/api/pull/42     # to today
@@ -75,6 +90,8 @@ The app watches `~/Daybook`. When the CLI, an agent or another editor changes a 
 |---|---|
 | `⌘K` | capture |
 | `⌘J` | assigned to you (GitHub and Linear) |
+| `⌘L` | agent |
+| `⌘↵` | apply the agent's plan, or hand the capture box to the agent |
 | `⌥Space` | capture from any app |
 | `⇧↵` | add a sub-task while capturing |
 | `⌥↑` / `⌥↓` | previous / next day |

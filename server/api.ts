@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { mkdir, readdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { homedir } from 'node:os'
@@ -119,6 +119,23 @@ async function assigned(fresh: boolean): Promise<Assigned> {
   return value
 }
 
+// The agent's prompt, checks and writes live in Rust, so the dev server borrows the CLI's hidden
+// `daybook agent` command from a debug build (`cargo build` in src-tauri).
+const DAYBOOK_BIN = resolve(import.meta.dirname, '../src-tauri/target/debug/daybook')
+
+function agent(command: string, input: string) {
+  return new Promise<{ status: number; body: string }>((done) => {
+    const child = spawn(DAYBOOK_BIN, ['agent', command], { env: { ...process.env, DAYBOOK_DIR: NOTES_DIR } })
+    let out = ''
+    let err = ''
+    child.stdout.on('data', (chunk) => (out += chunk))
+    child.stderr.on('data', (chunk) => (err += chunk))
+    child.on('error', () => done({ status: 500, body: 'Build the CLI first: cargo build in src-tauri.' }))
+    child.on('close', (code) => done(code === 0 ? { status: 200, body: out } : { status: 500, body: err.replace(/^daybook: /, '').trim() }))
+    child.stdin.end(input)
+  })
+}
+
 async function handle(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url ?? '/', 'http://local')
   const path = url.pathname.replace(/^\/api/, '')
@@ -130,6 +147,14 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   }
 
   if (path === '/assigned' && req.method === 'GET') return send(res, 200, await assigned(url.searchParams.has('fresh')))
+
+  const command = path.match(/^\/agent\/(ask|apply|undo)$/)
+  if (command && req.method === 'POST') {
+    const { status, body } = await agent(command[1], await readBody(req))
+    res.statusCode = status
+    res.setHeader('content-type', status === 200 ? 'application/json' : 'text/plain; charset=utf-8')
+    return res.end(body)
+  }
 
   const note = path.match(/^\/notes\/([^/]+)$/)
   if (note && ID.test(note[1])) {

@@ -18,28 +18,28 @@ static CACHE: Mutex<Option<(Instant, Assigned)>> = Mutex::new(None);
 
 #[derive(Serialize, Clone)]
 pub struct Item {
-    source: &'static str,
-    kind: &'static str,
-    url: String,
-    title: String,
+    pub(crate) source: &'static str,
+    pub(crate) kind: &'static str,
+    pub(crate) url: String,
+    pub(crate) title: String,
     #[serde(rename = "ref")]
-    reference: String,
+    pub(crate) reference: String,
     /// GitHub: open or draft. Linear: the state type, as in `LinkInfo`.
-    state: String,
+    pub(crate) state: String,
     /// Linear's own name for the state, like "In Review".
-    status: Option<String>,
+    pub(crate) status: Option<String>,
     /// "review" for PRs waiting on your review, otherwise "assigned".
-    group: &'static str,
+    pub(crate) group: &'static str,
     /// Milliseconds since the epoch.
-    updated: i64,
+    pub(crate) updated: i64,
 }
 
 /// A source is None when it isn't connected (no `gh` login, no Linear key) or couldn't be loaded.
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Assigned {
-    github: Option<Vec<Item>>,
-    linear: Option<Vec<Item>>,
+    pub(crate) github: Option<Vec<Item>>,
+    pub(crate) linear: Option<Vec<Item>>,
     github_error: Option<String>,
     linear_error: Option<String>,
 }
@@ -66,6 +66,14 @@ pub fn fetch(links: &Links, fresh: bool) -> Assigned {
         *CACHE.lock().unwrap() = Some((Instant::now(), assigned.clone()));
     }
     assigned
+}
+
+/// Whatever was loaded last, however old, so the agent doesn't wait on GitHub and Linear.
+pub fn latest(links: &Links) -> Assigned {
+    if let Some((_, cached)) = CACHE.lock().unwrap().as_ref() {
+        return cached.clone();
+    }
+    fetch(links, false)
 }
 
 /// Review requests first; anything that's both a review request and assigned shows once, as a review.

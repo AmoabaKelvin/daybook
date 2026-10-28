@@ -1,6 +1,6 @@
 import { AnimatePresence } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
-import { hideQuick, quickAdd, resizeQuick } from '../lib/api'
+import { hideQuick, quickAdd, quickAsk, resizeQuick } from '../lib/api'
 import { onQuickPanel } from '../lib/native'
 import { toTaskBlock } from '../lib/tasks'
 import { CaptureCard } from './Capture'
@@ -39,10 +39,15 @@ export function QuickCapture() {
     await quickAdd(target, await toTaskBlock(text, subtasks))
   }
 
+  function ask(text: string) {
+    close()
+    quickAsk(text)
+  }
+
   return (
     <div ref={frame} className="quick-frame">
       <AnimatePresence onExitComplete={() => !isOpen.current && hideQuick()}>
-        {open && <CaptureCard key={session} onClose={close} onSubmit={submit} />}
+        {open && <CaptureCard key={session} onClose={close} onSubmit={submit} onAsk={ask} />}
       </AnimatePresence>
     </div>
   )

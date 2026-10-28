@@ -86,7 +86,7 @@ pub fn run(args: &[String]) -> Option<i32> {
 
 /// Runs one command against `dir` and returns what it prints on stdout.
 fn execute(cmd: &str, rest: &[String], dir: &Path) -> Result<String, Fail> {
-    let known = ["help", "--help", "-h", "show", "add", "tasks", "done", "undo", "days", "path"];
+    let known = ["help", "--help", "-h", "show", "add", "tasks", "done", "undo", "days", "path", "agent"];
     if !known.contains(&cmd) {
         return Err(usage(format!("unknown command `{cmd}`")));
     }
@@ -101,6 +101,7 @@ fn execute(cmd: &str, rest: &[String], dir: &Path) -> Result<String, Fail> {
         "done" => tick(dir, rest, true),
         "undo" => tick(dir, rest, false),
         "days" => days(dir, rest),
+        "agent" => agent(dir, rest),
         _ => path(dir, rest),
     }
 }
@@ -371,6 +372,37 @@ fn days(dir: &Path, rest: &[String]) -> Result<String, Fail> {
             format!("{:<10}  {name:<9}  {} open · {} done\n", r.id, r.open, r.done)
         })
         .collect())
+}
+
+fn from_json<T: serde::de::DeserializeOwned>(input: &str) -> Result<T, Fail> {
+    serde_json::from_str(input).map_err(|e| usage(e.to_string()))
+}
+
+/// Not in the help: the agent page's commands as JSON on stdin and stdout, for the browser dev server.
+fn agent(dir: &Path, rest: &[String]) -> Result<String, Fail> {
+    use crate::{agent, prefs, providers};
+    let mut input = String::new();
+    std::io::Read::read_to_string(&mut std::io::stdin(), &mut input).map_err(|e| Fail::Error(e.to_string()))?;
+    let json = |value: serde_json::Result<String>| value.map_err(|e| Fail::Error(e.to_string()));
+    match rest.first().map(String::as_str) {
+        Some("ask") => {
+            let turns: Vec<agent::Turn> = from_json(&input)?;
+            let schema = agent::schema();
+            let chat = agent::Chat::next(None, dir, || None, &turns);
+            let request = providers::Request { system: agent::SYSTEM, schema: &schema, messages: &chat.messages };
+            let answer = providers::ask(&prefs::load().agent, &request).map_err(Fail::Error)?;
+            json(serde_json::to_string(&agent::plan(dir, &answer).map_err(Fail::Error)?))
+        }
+        Some("apply") => {
+            let changes: Vec<agent::Change> = from_json(&input)?;
+            json(serde_json::to_string(&agent::apply(dir, &changes).map_err(Fail::Error)?))
+        }
+        Some("undo") => {
+            let snapshots: Vec<agent::Snapshot> = from_json(&input)?;
+            json(serde_json::to_string(&agent::undo(dir, &snapshots).map_err(Fail::Error)?))
+        }
+        _ => Err(usage("agent ask|apply|undo, with JSON on stdin")),
+    }
 }
 
 fn path(dir: &Path, rest: &[String]) -> Result<String, Fail> {

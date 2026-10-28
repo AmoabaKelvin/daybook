@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react'
 import type { NoteSummary } from '../lib/api'
-import { ASSIGNED, dayId, shortLabel } from '../lib/dates'
+import { AGENT, ASSIGNED, dayId, isDay, shortLabel } from '../lib/dates'
 
 type Props = {
   ids: string[]
@@ -8,10 +8,12 @@ type Props = {
   current: string
   /** How much is assigned to you, once known. */
   assignedCount: number | null
+  /** The agent is answering, or has a plan waiting to be applied. */
+  agentState: 'thinking' | 'waiting' | null
   onSelect: (id: string) => void
 }
 
-export function Sidebar({ ids, notes, current, assignedCount, onSelect }: Props) {
+export function Sidebar({ ids, notes, current, assignedCount, agentState, onSelect }: Props) {
   const today = dayId()
   return (
     <nav className="sidebar">
@@ -29,9 +31,9 @@ export function Sidebar({ ids, notes, current, assignedCount, onSelect }: Props)
                 initial={{ opacity: 0, x: -8 }}
                 animate={{ opacity: 1, x: 0, transition: { delay: Math.min(index, 12) * 0.025 } }}
                 exit={{ opacity: 0, x: -8 }}
-                className={id === ASSIGNED ? 'pinned' : undefined}
+                className={id === AGENT ? 'pinned' : afterUpcoming(ids, index, today) ? 'past' : undefined}
               >
-                <button className={active ? 'day active' : 'day'} onClick={() => onSelect(id)} title={id === ASSIGNED ? 'Assigned (⌘J)' : undefined}>
+                <button className={active ? 'day active' : 'day'} onClick={() => onSelect(id)} title={id === ASSIGNED ? 'Assigned (⌘J)' : id === AGENT ? 'Agent (⌘L)' : undefined}>
                   {active && (
                     <motion.span layoutId="day-highlight" className="day-highlight" transition={{ type: 'spring', stiffness: 500, damping: 38 }} />
                   )}
@@ -40,7 +42,17 @@ export function Sidebar({ ids, notes, current, assignedCount, onSelect }: Props)
                     {shortLabel(id)}
                   </span>
                   <span className="day-count">
-                    {id === ASSIGNED ? assignedCount || '' : allDone ? <Check /> : note?.open ? note.open : ''}
+                    {id === AGENT ? (
+                      agentState && <span className={`agent-dot ${agentState}`} />
+                    ) : id === ASSIGNED ? (
+                      assignedCount || ''
+                    ) : allDone ? (
+                      <Check />
+                    ) : note?.open ? (
+                      note.open
+                    ) : (
+                      ''
+                    )}
                   </span>
                 </button>
               </motion.li>
@@ -50,11 +62,18 @@ export function Sidebar({ ids, notes, current, assignedCount, onSelect }: Props)
       </ul>
       <div className="hints">
         <span><kbd>⌘K</kbd> capture</span>
+        <span><kbd>⌘L</kbd> agent</span>
         <span><kbd>⌥↑↓</kbd> days</span>
         <span><kbd>⌘/</kbd> source</span>
       </div>
     </nav>
   )
+}
+
+/** The first day before today, when days ahead are listed above it. */
+function afterUpcoming(ids: string[], index: number, today: string) {
+  const previous = ids[index - 1]
+  return isDay(ids[index]) && ids[index] < today && !!previous && isDay(previous) && previous > today
 }
 
 function Check() {

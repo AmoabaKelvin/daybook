@@ -1,7 +1,10 @@
+mod agent;
 mod assigned;
 pub mod cli;
 mod links;
 pub mod notes;
+mod prefs;
+mod providers;
 mod quick;
 mod tray;
 mod watch;
@@ -21,6 +24,8 @@ struct State {
     links: Links,
     watcher: Mutex<Option<Debouncer<RecommendedWatcher>>>,
     shortcut: Mutex<quick::ShortcutStatus>,
+    /// The agent page's conversation, as the model has seen it.
+    chat: Mutex<Option<agent::Chat>>,
 }
 
 #[tauri::command]
@@ -83,6 +88,89 @@ async fn link_info(app: tauri::AppHandle, url: String) -> Result<Option<LinkInfo
 #[tauri::command]
 async fn list_assigned(app: tauri::AppHandle, fresh: bool) -> Result<assigned::Assigned, String> {
     blocking(app, move |state| assigned::fetch(&state.links, fresh)).await
+}
+
+/// Asks the agent about the latest message, with the notes and assigned work as context.
+#[tauri::command]
+async fn agent_ask(app: tauri::AppHandle, turns: Vec<agent::Turn>) -> Result<agent::Plan, String> {
+    blocking(app, move |state| {
+        let prefs = prefs::load().agent;
+        let previous = state.chat.lock().unwrap().clone();
+        let mut chat = agent::Chat::next(previous.as_ref(), &state.dir, || Some(assigned::latest(&state.links)), &turns);
+        let schema = agent::schema();
+        let answer = providers::ask(&prefs, &providers::Request { system: agent::SYSTEM, schema: &schema, messages: &chat.messages })?;
+        let plan = agent::plan(&state.dir, &answer)?;
+        chat.answered(&answer, &plan);
+        *state.chat.lock().unwrap() = Some(chat);
+        Ok(plan)
+    })
+    .await?
+}
+
+/// Gets the agent ready to answer quickly, e.g. when its page opens.
+#[tauri::command]
+fn agent_warm() {
+    std::thread::spawn(|| providers::warm(&prefs::load().agent, agent::SYSTEM, &agent::schema()));
+}
+
+#[tauri::command]
+fn agent_cancel() {
+    providers::cancel();
+}
+
+/// Writes the changes. The folder watcher tells the window, as with the CLI.
+#[tauri::command]
+fn agent_apply(app: AppHandle, state: tauri::State<State>, changes: Vec<agent::Change>) -> Result<Vec<agent::Snapshot>, String> {
+    let snapshots = agent::apply(&state.dir, &changes)?;
+    tray::refresh(&app);
+    Ok(snapshots)
+}
+
+#[tauri::command]
+fn agent_undo(app: AppHandle, state: tauri::State<State>, snapshots: Vec<agent::Snapshot>) -> Result<usize, String> {
+    let skipped = agent::undo(&state.dir, &snapshots)?;
+    tray::refresh(&app);
+    Ok(skipped)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AgentSettings {
+    prefs: providers::AgentPrefs,
+    providers: Vec<providers::ProviderStatus>,
+}
+
+#[tauri::command]
+async fn agent_settings(app: tauri::AppHandle) -> Result<AgentSettings, String> {
+    blocking(app, |_| AgentSettings { prefs: prefs::load().agent, providers: providers::status() }).await
+}
+
+#[tauri::command]
+fn set_agent_prefs(prefs: providers::AgentPrefs) -> Result<(), String> {
+    prefs::update(|p| p.agent = prefs).map(|_| ())
+}
+
+#[tauri::command]
+async fn connect_openrouter(app: tauri::AppHandle) -> Result<(), String> {
+    let handle = app.clone();
+    blocking(app, move |_| providers::connect_openrouter(&handle)).await?
+}
+
+#[tauri::command]
+async fn set_openrouter_key(app: tauri::AppHandle, key: String) -> Result<(), String> {
+    blocking(app, move |_| providers::set_openrouter_key(&key)).await?
+}
+
+#[tauri::command]
+fn clear_openrouter_key() {
+    providers::clear_openrouter_key();
+}
+
+/// From the quick capture panel: hand what was typed to the agent in the main window.
+#[tauri::command]
+fn quick_ask(app: AppHandle, text: String) {
+    show_main(&app);
+    let _ = app.emit_to("main", "daybook://ask", text);
 }
 
 #[derive(Serialize)]
@@ -219,6 +307,7 @@ pub fn run() {
             links: Links::new(),
             watcher: Mutex::new(None),
             shortcut: Default::default(),
+            chat: Mutex::new(None),
         })
         .setup(|app| {
             let handle = app.handle();
@@ -241,6 +330,17 @@ pub fn run() {
             hide_quick,
             resize_quick,
             set_capture_shortcut,
+            agent_ask,
+            agent_warm,
+            agent_cancel,
+            agent_apply,
+            agent_undo,
+            agent_settings,
+            set_agent_prefs,
+            connect_openrouter,
+            set_openrouter_key,
+            clear_openrouter_key,
+            quick_ask,
             link_info,
             list_assigned,
             get_settings,

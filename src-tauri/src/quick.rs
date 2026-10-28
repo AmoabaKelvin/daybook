@@ -1,15 +1,13 @@
 //! Quick capture: a global shortcut opens a small floating box over whatever app you're in.
 //! It's a non-activating panel, so the app you were in stays in front and gets focus back.
 
-use serde::{Deserialize, Serialize};
-use std::fs;
-use std::path::PathBuf;
+use crate::prefs;
+use serde::Serialize;
 use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Size, WebviewUrl};
 use tauri_nspanel::{tauri_panel, CollectionBehavior, ManagerExt, PanelBuilder, PanelLevel, StyleMask};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 pub const LABEL: &str = "quick";
-const DEFAULT_SHORTCUT: &str = "Alt+Space";
 /// The card is 600 wide; the rest is room for its shadow.
 const WIDTH: f64 = 660.0;
 
@@ -95,35 +93,6 @@ fn place(app: &AppHandle) {
     let _ = window.set_position(LogicalPosition::new(origin.x + (size.width - WIDTH) / 2.0, origin.y + size.height * 0.2));
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Prefs {
-    /// An accelerator like "Alt+Space", or None when quick capture is off.
-    #[serde(default = "default_shortcut")]
-    capture_shortcut: Option<String>,
-}
-
-fn default_shortcut() -> Option<String> {
-    Some(DEFAULT_SHORTCUT.into())
-}
-
-fn prefs_path(app: &AppHandle) -> Option<PathBuf> {
-    Some(app.path().app_config_dir().ok()?.join("prefs.json"))
-}
-
-fn load_prefs(app: &AppHandle) -> Prefs {
-    prefs_path(app)
-        .and_then(|path| fs::read_to_string(path).ok())
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or(Prefs { capture_shortcut: default_shortcut() })
-}
-
-fn save_prefs(app: &AppHandle, prefs: &Prefs) -> Result<(), String> {
-    let path = prefs_path(app).ok_or("No config folder")?;
-    fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
-    fs::write(path, serde_json::to_string_pretty(prefs).unwrap()).map_err(|e| e.to_string())
-}
-
 /// The current shortcut, and why it couldn't be registered if it couldn't.
 #[derive(Default, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -147,7 +116,7 @@ fn register(app: &AppHandle, shortcut: Option<&str>) -> Result<(), String> {
 
 /// Registers the saved shortcut at launch.
 pub fn start(app: &AppHandle) -> ShortcutStatus {
-    let shortcut = load_prefs(app).capture_shortcut;
+    let shortcut = prefs::load().capture_shortcut;
     let error = register(app, shortcut.as_deref()).err();
     ShortcutStatus { shortcut, error }
 }
@@ -158,6 +127,6 @@ pub fn set_shortcut(app: &AppHandle, current: &ShortcutStatus, shortcut: Option<
         let _ = register(app, current.shortcut.as_deref());
         return Err(error);
     }
-    save_prefs(app, &Prefs { capture_shortcut: shortcut.clone() })?;
+    prefs::update(|p| p.capture_shortcut = shortcut.clone())?;
     Ok(ShortcutStatus { shortcut, error: None })
 }
